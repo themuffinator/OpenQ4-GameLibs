@@ -1,0 +1,62 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "meson: setup",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/.vscode/meson-task.ps1",
+        "setup"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "meson: compile",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/.vscode/meson-task.ps1",
+        "compile"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build: gamelibs (meson)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "meson: setup",
+        "meson: compile"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "launch: OpenQ4 (no build)",
+      "type": "process",
+      "command": "${workspaceFolder}/../OpenQ4/build_meson/OpenQ4.exe",
+      "args": [],
+      "options": {
+        "cwd": "${workspaceFolder}/../OpenQ4/build_meson"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

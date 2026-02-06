@@ -701,7 +701,7 @@ void rvVehicleWeapon::Spawn ( void ) {
 		brassDict = gameLocal.FindEntityDefDict( name, false );
 
 		if ( !brassDict ) {
-			gameLocal.Warning( "Unknown brass def '%s' for weapon on vehicle '%s'", name, position->mParent->name );
+			gameLocal.Warning( "Unknown brass def '%s' for weapon on vehicle '%s'", name.c_str(), position->mParent->name.c_str() );
 		}
 	}
 
@@ -2350,8 +2350,9 @@ rvVehicleUserAnimated::SetFrame
 ================
 */
 void rvVehicleUserAnimated::SetFrame( const rvUserAnimatedAnim_t & anim ) {
-	float lerp				= anim.frame - int( anim.frame );
-	frameBlend_t frameBlend	= { 0, anim.frame, anim.frame + 1.0f, 1.0f - lerp, lerp };
+	int frame				= static_cast<int>( anim.frame );
+	float lerp				= anim.frame - frame;
+	frameBlend_t frameBlend	= { 0, frame, frame + 1, 1.0f - lerp, lerp };
 	position->GetParent()->GetAnimator()->SetFrame( anim.channel, anim.index, frameBlend );
 }
 

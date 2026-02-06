@@ -13,6 +13,47 @@
 #endif
 
 const int IMPULSE_DELAY = 150;
+
+/*
+======================
+GetAspectCorrectScreenRect
+======================
+*/
+static void GetAspectCorrectScreenRect( float &x, float &y, float &w, float &h ) {
+	const float baseAspect = ( float )SCREEN_WIDTH / ( float )SCREEN_HEIGHT;
+	const float currentAspect = idMath::ClampFloat( 0.1f, 10.0f, gameLocal.GetScreenAspectRatio() );
+
+	if ( currentAspect >= baseAspect ) {
+		w = SCREEN_HEIGHT * currentAspect;
+		h = SCREEN_HEIGHT;
+		x = ( SCREEN_WIDTH - w ) * 0.5f;
+		y = 0.0f;
+	} else {
+		w = SCREEN_WIDTH;
+		h = SCREEN_WIDTH / currentAspect;
+		x = 0.0f;
+		y = ( SCREEN_HEIGHT - h ) * 0.5f;
+	}
+}
+
+/*
+======================
+DrawAspectCorrectFullscreenMaterial
+======================
+*/
+static void DrawAspectCorrectFullscreenMaterial( const idMaterial *material ) {
+	float x;
+	float y;
+	float w;
+	float h;
+
+	if ( material == NULL ) {
+		return;
+	}
+
+	GetAspectCorrectScreenRect( x, y, w, h );
+	renderSystem->DrawStretchPic( x, y, w, h, 0.0f, 0.0f, 1.0f, 1.0f, material );
+}
 /*
 ==============
 idPlayerView::idPlayerView
@@ -536,7 +577,7 @@ void idPlayerView::SingleView( idUserInterface *hud, const renderView_t *view, i
 		// Render tunnel vision
 		if ( gameLocal.time < tvFinishTime ) {
 			renderSystem->SetColor4( 1.0f, 1.0f, 1.0f, tvScale * ((float)(tvFinishTime - gameLocal.time) / (float)(tvFinishTime - tvStartTime)) );
-			renderSystem->DrawStretchPic( 0.0f, 0.0f, 640.0f, 480.0f, 0.0f, 0.0f, 1.0f, 1.0f, tunnelMaterial );
+			DrawAspectCorrectFullscreenMaterial( tunnelMaterial );
 		}
 
 		player->DrawHUD( hud );
@@ -583,7 +624,7 @@ void idPlayerView::SingleView( idUserInterface *hud, const renderView_t *view, i
 			g_testPostProcess.SetString( "" );
 		} else {
 			renderSystem->SetColor4( 1.0f, 1.0f, 1.0f, 1.0f );
-			renderSystem->DrawStretchPic( 0.0f, 0.0f, 640.0f, 480.0f, 0.0f, 0.0f, 1.0f, 1.0f, mtr );
+			DrawAspectCorrectFullscreenMaterial( mtr );
 		}
 	}
 }
@@ -699,7 +740,7 @@ void idPlayerView::ScreenFade() {
 
 	if ( fadeColor[ 3 ] != 0.0f ) {
 		renderSystem->SetColor4( fadeColor[ 0 ], fadeColor[ 1 ], fadeColor[ 2 ], fadeColor[ 3 ] );
-		renderSystem->DrawStretchPic( 0, 0, 640, 480, 0, 0, 1, 1, declManager->FindMaterial( "_white" ) );
+		DrawAspectCorrectFullscreenMaterial( declManager->FindMaterial( "_white" ) );
 	}
 }
 
@@ -722,7 +763,7 @@ void idPlayerView::InfluenceVision( idUserInterface *hud, const renderView_t *vi
 	if ( player->GetInfluenceMaterial() ) {
 		SingleView( hud, view );
 		renderSystem->SetColor4( 1.0f, 1.0f, 1.0f, pct );
-		renderSystem->DrawStretchPic( 0.0f, 0.0f, 640.0f, 480.0f, 0.0f, 0.0f, 1.0f, 1.0f, player->GetInfluenceMaterial() );
+		DrawAspectCorrectFullscreenMaterial( player->GetInfluenceMaterial() );
 	} else if ( player->GetInfluenceEntity() == NULL ) {
 		SingleView( hud, view, RF_NO_GUI );
 		return;

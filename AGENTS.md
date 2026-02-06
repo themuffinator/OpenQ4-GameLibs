@@ -29,7 +29,7 @@ This file describes project goals, rules, and upstream credits for anyone workin
 - Keep credits accurate and append attributions for newly integrated upstream/third-party work.
 
 **Development Procedure (Recommended)**
-1. Build game libraries from `source/q4sdk.sln` (Windows) or `source/SConstruct` (legacy/portability path).
+1. Build game libraries with Meson/Ninja from an x86 Visual Studio toolchain shell (`meson setup builddir --backend ninja --vsenv` then `meson compile -C builddir`).
 2. Validate behavior using OpenQ4 (`E:\Repositories\OpenQ4`) against original Quake 4 assets.
 3. Review runtime logs in the active Quake 4 install.
 4. Iterate until compatibility and stability targets are met.

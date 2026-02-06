@@ -4,10 +4,18 @@
 
 #include "../Game_local.h"
 
-#ifdef _WIN32
-#include "TypeInfo.h"
+#if defined(_WIN32)
+	#if defined(__has_include)
+		#if __has_include("TypeInfo.h")
+			#include "TypeInfo.h"
+		#else
+			#include "NoGameTypeInfo.h"
+		#endif
+	#else
+		#include "TypeInfo.h"
+	#endif
 #else
-#include "NoGameTypeInfo.h"
+	#include "NoGameTypeInfo.h"
 #endif
 
 /*

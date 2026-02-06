@@ -3531,7 +3531,7 @@ void idPlayer::UpdateHudStats( idUserInterface *_hud ) {
 
 void idPlayer::DrawInput()
 {
-	const idVec4 highlightColor(1.0f, 0.0f, 0.0f, 0.8f);
+	idVec4 highlightColor(1.0f, 0.0f, 0.0f, 0.8f);
 	sscanf( hud_inputColor.GetString(), "%f %f %f", &highlightColor.x, &highlightColor.y, &highlightColor.z );
 
 	const idVec4 normalColor(1.0f, 1.0f, 1.0f, 0.8f);
@@ -3936,7 +3936,7 @@ void idPlayer::EnterCinematic( void ) {
    		cinematicHud->HandleNamedEvent ( "cinematicStart" );
 // RAVEN BEGIN
 // jnewquist: Option to adjust vertical fov instead of horizontal for non 4:3 modes
-		if ( cvarSystem->GetCVarInteger( "r_aspectRatio" ) != 0 ) {
+		if ( gameLocal.GetScreenAspectRatio() > ( 4.0f / 3.0f ) ) {
 			cinematicHud->HandleNamedEvent ( "hideLetterbox" );
 		}
 // RAVEN END

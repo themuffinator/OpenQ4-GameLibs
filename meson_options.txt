@@ -1,0 +1,27 @@
+option(
+  'build_spgame',
+  type : 'boolean',
+  value : true,
+  description : 'Build the single-player game module (Gamex86.dll).',
+)
+
+option(
+  'build_mpgame',
+  type : 'boolean',
+  value : true,
+  description : 'Build the multiplayer game module (MPGamex86.dll).',
+)
+
+option(
+  'inline_debug',
+  type : 'boolean',
+  value : false,
+  description : 'Enable legacy DebugInline behavior for debug builds (_INLINEDEBUG + /Ob1).',
+)
+
+option(
+  'mssdk_include',
+  type : 'string',
+  value : '',
+  description : 'Optional legacy SDK include path relative to source/ (for example mssdk/include).',
+)

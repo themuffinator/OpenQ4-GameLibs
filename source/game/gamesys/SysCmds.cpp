@@ -25,10 +25,18 @@
 #endif
 // RAVEN END
 
-#ifdef _WIN32
-#include "TypeInfo.h"
+#if defined(_WIN32)
+	#if defined(__has_include)
+		#if __has_include("TypeInfo.h")
+			#include "TypeInfo.h"
+		#else
+			#include "NoGameTypeInfo.h"
+		#endif
+	#else
+		#include "TypeInfo.h"
+	#endif
 #else
-#include "NoGameTypeInfo.h"
+	#include "NoGameTypeInfo.h"
 #endif
 
 /*
@@ -171,7 +179,7 @@ void Cmd_ListSpawnArgs_f( const idCmdArgs &args ) {
 
 	for ( i = 0; i < ent->spawnArgs.GetNumKeyVals(); i++ ) {
 		const idKeyValue *kv = ent->spawnArgs.GetKeyVal( i );
-		gameLocal.Printf( "\"%s\"  "S_COLOR_WHITE"\"%s\"\n", kv->GetKey().c_str(), kv->GetValue().c_str() );
+		gameLocal.Printf( "\"%s\"  " S_COLOR_WHITE "\"%s\"\n", kv->GetKey().c_str(), kv->GetValue().c_str() );
 	}
 }
 

@@ -687,6 +687,7 @@ public:
 	void					SetPortalSky( idCamera *cam );
 // RAVEN END
 
+	float					GetScreenAspectRatio( void ) const;
 	void					CalcFov( float base_fov, float &fov_x, float &fov_y ) const;
 
 	void					AddEntityToHash( const char *name, idEntity *ent );
