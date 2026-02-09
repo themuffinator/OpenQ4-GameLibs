@@ -1,5 +1,5 @@
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 // RAVEN BEGIN
 #include "../Game_local.h"
@@ -65,11 +65,11 @@ bool idAASLocal::Init( const idStr &mapName, unsigned int mapFileCRC ) {
 		}
 // RAVEN BEGIN
 // rhummer: Check if this is a dummy file, since it really has no valid data dump it.
-		else if ( file->IsDummyFile( mapFileCRC ) ) {
-			AASFileManager->FreeAAS( file );
-			file = NULL;
-			return false;
-		}
+		//else if ( file->IsDummyFile( mapFileCRC ) ) {
+		//	AASFileManager->FreeAAS( file );
+		//	file = NULL;
+		//	return false;
+		//}
 // RAVEN END
 		SetupRouting();
 	}
@@ -124,7 +124,7 @@ size_t idAASLocal::StatsSummary( void ) const {
 			+ ( areaCacheIndexSize * sizeof( idRoutingCache * ) ) 
 			+ ( portalCacheIndexSize * sizeof( idRoutingCache * ) );
 
-	return( file->GetMemorySize() + size );
+	return(  size );
 }
 // RAVEN END
 
@@ -221,7 +221,7 @@ float idAASLocal::AreaRadius( int areaNum ) const {
 idAASLocal::AreaBounds
 ============
 */
-idBounds & idAASLocal::AreaBounds( int areaNum ) const {
+const idBounds & idAASLocal::AreaBounds( int areaNum ) const {
 	return file->GetArea( areaNum ).bounds;
 }
 /*
@@ -347,7 +347,7 @@ idAASCallback::testResult_t idAASCallback::Test ( class idAAS *aas, int areaNum,
 	}
 	
 	// Get area for edges
-	aasArea_t& area = file->GetArea ( areaNum );
+	const aasArea_t& area = file->GetArea ( areaNum );
 
 	if ( ai_debugTactical.GetInteger ( ) > 1 ) {
 		gameRenderWorld->DebugLine ( colorYellow, area.center, area.center + idVec3(0,0,80.0f), 10000 );
@@ -384,7 +384,7 @@ idAASCallback::testResult_t idAASCallback::Test ( class idAAS *aas, int areaNum,
 	int	f;
 	int	e;
 	for ( f = 0; f < area.numFaces; f ++ ) {
-		aasFace_t& face = file->GetFace ( abs ( file->GetFaceIndex (area.firstFace + f ) ) );
+		const aasFace_t& face = file->GetFace ( abs ( file->GetFaceIndex (area.firstFace + f ) ) );
 		
 		// for each edge test a point between the center of the edge and the center
 		for ( e = 0; e < face.numEdges; e ++ ) {
@@ -460,3 +460,18 @@ bool idAASCallback::TestPoint ( class idAAS *aas, const idVec3& pos, const float
 }
 
 // RAVEN END
+
+
+// jmarshall
+/*
+============
+idAASLocal::AdjustPositionAndGetArea
+============
+*/
+int idAASLocal::AdjustPositionAndGetArea(idVec3& origin)
+{
+	int area = PointReachableAreaNum(origin, DefaultSearchBounds(), AREA_REACHABLE_WALK);
+	PushPointIntoAreaNum(area, origin);
+	return area;
+}
+// jmarshall end

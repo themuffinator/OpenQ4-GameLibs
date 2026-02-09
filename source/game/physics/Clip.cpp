@@ -1,6 +1,6 @@
 
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "../Game_local.h"
 
@@ -116,7 +116,9 @@ void idClipModel::ClearTraceModelCache( void ) {
 	int i;
 
 	for ( i = 0; i < traceModelCache.Num(); i++ ) {
-		collisionModelManager->FreeModel( traceModelCache[i]->collisionModel );
+// jmarshall
+		//collisionModelManager->FreeModel( traceModelCache[i]->collisionModel );
+// jmarshall
 		traceModelCache[i]->collisionModel = NULL;
 	}
 	traceModelCache.DeleteContents( true );
@@ -204,11 +206,12 @@ void idClipModel::ReplaceTraceModel( int index, const idTraceModel &trm, const i
 	entry->refCount = 1;
 	entry->hash = 0xffffffff;
 	entry->material = material;
-
-	if(entry->collisionModel)
-	{
-		collisionModelManager->FreeModel( entry->collisionModel );
-	}
+// jmarshall
+	//if(entry->collisionModel)
+	//{
+	//	collisionModelManager->FreeModel( entry->collisionModel );
+	//}
+// jmarshall end
 	entry->collisionModel = collisionModelManager->ModelFromTrm( gameLocal.GetMapName(), va( "traceModel%d", index ), trm, material );
 }
 
@@ -344,7 +347,9 @@ void idClipModel::FreeModel( void ) {
 	}
 
 	if ( collisionModel != NULL ) {
-		collisionModelManager->FreeModel( collisionModel );
+// jmarshall
+		//collisionModelManager->FreeModel( collisionModel );
+// jmarshall
 		collisionModel = NULL;
 	}
 
@@ -370,7 +375,9 @@ idClipModel::LoadModel
 */
 bool idClipModel::LoadModel( const char *name ) {
 	FreeModel();
-	collisionModel = collisionModelManager->LoadModel( gameLocal.GetMapName(), name );
+// jmarshall: added precache flag
+	collisionModel = collisionModelManager->LoadModel( gameLocal.GetMapName(), name, false );
+// jmarshall end
 	if ( collisionModel != NULL ) {
 		collisionModel->GetBounds( bounds );
 		collisionModel->GetContents( contents );
@@ -496,7 +503,9 @@ idClipModel::idClipModel( const idClipModel *model ) {
 	contents = model->contents;
 	collisionModel = NULL;
 	if ( model->collisionModel != NULL ) {
-		collisionModel = collisionModelManager->LoadModel( gameLocal.GetMapName(), model->collisionModel->GetName() );
+// jmarshall - added precache flag
+		collisionModel = collisionModelManager->LoadModel( gameLocal.GetMapName(), model->collisionModel->GetName(), false );
+// jmarshall end
 	}
 	traceModelIndex = -1;
 	if ( model->traceModelIndex != -1 ) {
@@ -570,7 +579,9 @@ void idClipModel::Restore( idRestoreGame *savefile ) {
 	savefile->ReadInt( contents );
 	savefile->ReadString( collisionModelName );
 	if ( collisionModelName.Length() ) {
-		collisionModel = collisionModelManager->LoadModel( gameLocal.GetMapName(), collisionModelName );
+// jmarshall - added precache flag
+		collisionModel = collisionModelManager->LoadModel( gameLocal.GetMapName(), collisionModelName, false );
+// jmarshall end
 	} else {
 		collisionModel = NULL;
 	}
@@ -858,7 +869,9 @@ void idClip::Init( void ) {
 	idVec3 size, maxSector = vec3_origin;
 
 	// get world map bounds
-	world = collisionModelManager->LoadModel( gameLocal.GetMapName(), WORLD_MODEL_NAME );
+// jmarshall - added precache flag
+	world = collisionModelManager->LoadModel( gameLocal.GetMapName(), WORLD_MODEL_NAME, false );
+// jmarshall end
 	world->GetBounds( worldBounds );
 
 	// create world sectors
@@ -888,6 +901,8 @@ idClip::Shutdown
 void idClip::Shutdown( void ) {
 	delete[] clipSectors;
 	clipSectors = NULL;
+	world = NULL;
+	worldBounds.Zero();
 
 	// free the trace model used for the temporaryClipModel
 	if ( temporaryClipModel.traceModelIndex != -1 ) {
@@ -1190,6 +1205,33 @@ void idClip::DrawClipSectors( void ) const {
 }
 
 /*
+============
+idClip::PointContents
+============
+*/
+int idClip::PointContents(const idVec3 p)
+{
+	int contents = -1;
+
+	contents = collisionModelManager->PointContents(p, world);
+	if (contents > 0)
+	{
+		return contents;
+	}
+
+	//for (int i = 0; i < collisionModelManager->GetNumInlinedProcClipModels(); i++)
+	//{
+	//	idCollisionModel* cm = collisionModelManager->GetCollisionModel(i + 1);
+	//	if (cm == NULL)
+	//		continue;
+	//
+	//	contents = collisionModelManager->PointContents(p, cm);
+	//}
+
+	return contents;
+}
+
+/*
 ====================
 idClip::GetClipSectorsStaticContents
 ====================
@@ -1469,13 +1511,20 @@ bool idClip::Translation( trace_t &results, const idVec3 &start, const idVec3 &e
 	trm = TraceModelForClipModel( mdl );
 
 	if ( !passEntity || passEntity->entityNumber != ENTITYNUM_WORLD ) {
-		// test world
-		idClip::numTranslations++;
-		collisionModelManager->Translation( &results, start, end, trm, trmAxis, contentMask, world, vec3_origin, mat3_default );
-		results.c.entityNum = results.fraction != 1.0f ? ENTITYNUM_WORLD : ENTITYNUM_NONE;
-		if ( results.fraction == 0.0f ) {
-			EndClipProfile( CPT_TRANSLATION );
-			return true;		// blocked immediately by the world
+		if ( world ) {
+			// test world
+			idClip::numTranslations++;
+			collisionModelManager->Translation( &results, start, end, trm, trmAxis, contentMask, world, vec3_origin, mat3_default );
+			results.c.entityNum = results.fraction != 1.0f ? ENTITYNUM_WORLD : ENTITYNUM_NONE;
+			if ( results.fraction == 0.0f ) {
+				EndClipProfile( CPT_TRANSLATION );
+				return true;		// blocked immediately by the world
+			}
+		} else {
+			memset( &results, 0, sizeof( results ) );
+			results.fraction = 1.0f;
+			results.endpos = end;
+			results.endAxis = trmAxis;
 		}
 	} else {
 		memset( &results, 0, sizeof( results ) );
@@ -1508,13 +1557,20 @@ bool idClip::Translation( trace_t &results, const idVec3 &start, const idVec3 &e
 			idClip::numRenderModelTraces++;
 			TraceRenderModel( trace, start, end, radius, trmAxis, touch );
 		} else {
+			idCollisionModel *touchModel = touch->GetCollisionModel();
+			if ( touchModel == NULL ) {
+				continue;
+			}
 			idClip::numTranslations++;
 			collisionModelManager->Translation( &trace, start, end, trm, trmAxis, contentMask,
-									touch->GetCollisionModel(), touch->origin, touch->axis );
+									touchModel, touch->origin, touch->axis );
 		}
 
 		if ( trace.fraction < results.fraction ) {
 			results = trace;
+			if ( touch->entity == NULL ) {
+				continue;
+			}
 			results.c.entityNum = touch->entity->entityNumber;
 			results.c.id = touch->id;
 

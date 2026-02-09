@@ -1,5 +1,5 @@
-#include "../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "Game_local.h"
 // RAVEN BEGIN
@@ -190,12 +190,12 @@ void idGameLocal::ServerClientConnect( int clientNum, const char *guid ) {
 idGameLocal::ServerClientBegin
 ================
 */
-void idGameLocal::ServerClientBegin( int clientNum ) {
+void idGameLocal::ServerClientBegin( int clientNum, bool isBot, const char* botName) {
 	idBitMsg	outMsg;
 	byte		msgBuf[MAX_GAME_MESSAGE_SIZE];
 
 	// spawn the player
-	SpawnPlayer( clientNum );
+	SpawnPlayer( clientNum, isBot, botName);
 	if ( clientNum == localClientNum ) {
 		mpGame.EnterGame( clientNum );
 	}
@@ -1781,7 +1781,7 @@ void idGameLocal::ClientProcessReliableMessage( int clientNum, const idBitMsg &m
 			int client = msg.ReadByte();
 			int spawnId = msg.ReadLong();
 			if ( !entities[ client ] ) {
-				SpawnPlayer( client );
+				SpawnPlayer( client, false, NULL);
 				entities[ client ]->FreeModelDef();
 			}
 			// fix up the spawnId to match what the server says
@@ -2275,6 +2275,14 @@ gameReturn_t idGameLocal::ClientPrediction( int clientNum, const usercmd_t *clie
 
 	// service any pending events
 	idEvent::ServiceEvents();
+
+	if ( gameRenderWorld && !mpInteractionsGenerated ) {
+		if ( developer.GetBool() ) {
+			common->Printf( "Deferred GenerateAllInteractions (ClientPrediction)\n" );
+		}
+		gameRenderWorld->GenerateAllInteractions();
+		mpInteractionsGenerated = true;
+	}
 
 	// show any debug info for this frame
 	if ( isNewFrame ) {
@@ -3135,6 +3143,7 @@ void idGameLocal::ProcessUnreliableMessage( const idBitMsg &msg ) {
 			rvClientEffect*		effect;
 			effectCategory_t	category;
 			const idDecl		*decl;
+			idMat3				axis;
 				
 			decl = idGameLocal::ReadDecl( msg, DECL_EFFECT );
 
@@ -3154,12 +3163,20 @@ void idGameLocal::ProcessUnreliableMessage( const idBitMsg &msg ) {
 
 			category = ( effectCategory_t )msg.ReadByte();
 
-			if ( bse->CanPlayRateLimited( category ) ) {
-				effect = new rvClientEffect( decl );
-				effect->SetOrigin( origin );
-				effect->SetAxis( quat.ToMat3() );
-				effect->Play( time, loop, origin2 );
+			if ( !decl ) {
+				break;
 			}
+			if ( bse->Filtered( decl->GetName(), category ) ) {
+				break;
+			}
+
+			// Filtered() already applies category rate-limiting.
+			axis = quat.ToMat3();
+			effect = new rvClientEffect( decl );
+			effect->SetOrigin( origin );
+			effect->SetAxis( axis );
+			effect->SetGravity( GetCurrentGravity( origin, axis ) );
+			effect->Play( time, loop, origin2 );
 			
 			break;
 		}
@@ -3325,7 +3342,7 @@ void idGameLocal::ReadNetworkInfo( int gameTime, idFile* file, int clientNum ) {
 		int icl, spawnId;
 		file->ReadInt( icl );
 		file->ReadInt( spawnId );
-		SpawnPlayer( icl );
+		SpawnPlayer( icl, false, NULL);
 		spawnIds[ icl ] = spawnId;
 		numClients = icl + 1;
 	}

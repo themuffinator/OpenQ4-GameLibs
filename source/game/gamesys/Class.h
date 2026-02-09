@@ -32,16 +32,20 @@ struct idEventFunc {
 class idEventArg {
 public:
 	int			type;
-	int			value;
+	intptr_t	value;
 
-	idEventArg()								{ type = D_EVENT_INTEGER; value = 0; };
-	idEventArg( int data )						{ type = D_EVENT_INTEGER; value = data; };
-	idEventArg( float data )					{ type = D_EVENT_FLOAT; value = *reinterpret_cast<int *>( &data ); };
-	idEventArg( const idVec3 &data )			{ type = D_EVENT_VECTOR; value = reinterpret_cast<int>( &data ); };
-	idEventArg( const idStr &data )				{ type = D_EVENT_STRING; value = reinterpret_cast<int>( data.c_str() ); };
-	idEventArg( const char *data )				{ type = D_EVENT_STRING; value = reinterpret_cast<int>( data ); };
-	idEventArg( const class idEntity *data )	{ type = D_EVENT_ENTITY; value = reinterpret_cast<int>( data ); };
-	idEventArg( const trace_t *data )			{ type = D_EVENT_TRACE; value = reinterpret_cast<int>( data ); };
+	idEventArg() { type = D_EVENT_INTEGER; value = 0; };
+	idEventArg(int data) { type = D_EVENT_INTEGER; value = data; };
+	idEventArg(float data) { type = D_EVENT_FLOAT; value = *reinterpret_cast<int*>(&data); };
+	idEventArg(const idVec3& data) { type = D_EVENT_VECTOR; value = reinterpret_cast<intptr_t>(&data); };
+	idEventArg(const idStr& data) { type = D_EVENT_STRING; value = reinterpret_cast<intptr_t>(data.c_str()); };
+	idEventArg(const char* data) { type = D_EVENT_STRING; value = reinterpret_cast<intptr_t>(data); };
+	idEventArg(const class idEntity* data) { type = D_EVENT_ENTITY; value = reinterpret_cast<intptr_t>(data); };
+	idEventArg(const struct trace_s* data) { type = D_EVENT_TRACE; value = reinterpret_cast<intptr_t>(data); };
+
+// jmarshall - this can't be called from doomscript!
+	idEventArg(intptr_t data) { type = D_EVENT_INTEGER64bit; value = data; };
+// jmarshall end
 };
 
 class idAllocError : public idException {
@@ -81,7 +85,7 @@ public:																	\
 // RAVEN BEGIN
 // jnewquist: Use accessor for static class type 
 #define CLASS_PROTOTYPE( nameofclass )									\
-private:																\
+public:																\
 	static	idTypeInfo						*Type;						\
 public:																	\
 	static	void							RegisterClass( void );		\
@@ -254,7 +258,7 @@ on abstract classes only.
 	}																								\
 	idEventFunc<nameofclass> nameofclass::eventCallbacks[] = {
 
-#else
+#else CLASS_STATES_DECLARATION
 
 // RAVEN BEGIN
 // bdube: added states
@@ -316,6 +320,23 @@ public:
 // jnewquist: Use accessor for static class type 
 	bool						IsType( const idTypeInfo *c ) const { return IsType(*c); }
 // RAVEN END
+
+// jmarshall
+	template< typename T >
+	T* Cast(void)
+	{
+		return this ? (IsType(T::Type) ? static_cast<T*>(this) : NULL) : NULL;
+	}
+
+	template< typename T >
+	const T* Cast(void) const
+	{
+		return this ? (IsType(T::Type) ? static_cast<const T*>(this) : NULL) : NULL;
+	}
+
+	virtual void			StateThreadChanged(void) { };
+// jmarshall end
+
 	const char *				GetClassname( void ) const;
 	const char *				GetSuperclass( void ) const;
 	void						FindUninitializedMemory( void );
@@ -368,7 +389,7 @@ public:
 	bool						ProcessEvent( const idEventDef *ev, idEventArg arg1, idEventArg arg2, idEventArg arg3, idEventArg arg4, idEventArg arg5, idEventArg arg6, idEventArg arg7 );
 	bool						ProcessEvent( const idEventDef *ev, idEventArg arg1, idEventArg arg2, idEventArg arg3, idEventArg arg4, idEventArg arg5, idEventArg arg6, idEventArg arg7, idEventArg arg8 );
 
-	bool						ProcessEventArgPtr( const idEventDef *ev, int *data );
+	bool						ProcessEventArgPtr( const idEventDef *ev, intptr_t *data );
 	void						CancelEvents( const idEventDef *ev );
 // RAVEN BEGIN
 // abahr:

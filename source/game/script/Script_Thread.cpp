@@ -1,6 +1,6 @@
 
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "../Game_local.h"
 
@@ -1223,11 +1223,11 @@ void idThread::Event_RandomInt( float range ) const {
 
 // rjohnson: new blur special effect
 void idThread::Event_SetSpecialEffect( int Effect, int Enabled ) {
-	renderSystem->SetSpecialEffect( (ESpecialEffectType)Effect, !!Enabled );
+	//renderSystem->SetSpecialEffect( (ESpecialEffectType)Effect, !!Enabled );
 }
 
 void idThread::Event_SetSpecialEffectParm( int Effect, int Parm, float Value ) {
-	renderSystem->SetSpecialEffectParm( (ESpecialEffectType)Effect, Parm, Value );
+	//renderSystem->SetSpecialEffectParm( (ESpecialEffectType)Effect, Parm, Value );
 }
 
 // RAVEN END
@@ -2255,11 +2255,11 @@ void idThread::Event_SetMatSort( const char *name, const char *val ) const {
 	if ( mat ) {
 		int srt = SS_DECAL;
 		if ( idStr::Icmp( val, "SS_MIN" ) == 0 ) {
-			srt = SS_MIN;		
+			//srt = SS_MIN;		
 		} else if ( idStr::Icmp( val, "SS_SUBVIEW" ) == 0 ) {
 			srt = SS_SUBVIEW;		
 		} else if ( idStr::Icmp( val, "SS_PREGUI" ) == 0 ) {
-			srt = SS_PREGUI;		
+			//srt = SS_PREGUI;		
 		} else if ( idStr::Icmp( val, "SS_GUI" ) == 0 ) {
 			srt = SS_GUI;		
 		} else if ( idStr::Icmp( val, "SS_BAD" ) == 0 ) {

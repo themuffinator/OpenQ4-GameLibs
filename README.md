@@ -4,6 +4,7 @@ Open-source Quake 4 game libraries maintained for use with the OpenQ4 engine pro
 
 ## Overview
 OpenQ4-GameLibs contains Quake4SDK-derived single-player and multiplayer game library code, maintained with a compatibility-first focus for modern development workflows.
+This repository is the canonical home for SDK/game-library source used by the OpenQ4 workspace.
 
 ## Included
 - Game library source code in `source/game` and `source/mpgame`
@@ -23,11 +24,14 @@ Requirements:
 - Meson and Ninja
 
 1. Configure:
-   `meson setup builddir --backend ninja --buildtype release --vsenv`
+   `powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 setup --wipe builddir . --backend ninja --buildtype release --vsenv`
 2. Build:
-   `meson compile -C builddir`
+   `powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 compile -C builddir`
 3. Outputs:
    `builddir/source/Gamex86.dll` and `builddir/source/MPGamex86.dll`
+
+From OpenQ4, you can invoke this same flow with:
+`powershell -ExecutionPolicy Bypass -File tools/build/build_gamelibs.ps1`
 
 ### Useful Configure Options
 - Build single-player only:
@@ -41,6 +45,8 @@ Requirements:
 - Intended to pair with OpenQ4 engine builds.
 - Requires user-supplied Quake 4 game data.
 - Companion engine repository: `https://github.com/themuffinator/OpenQ4`
+- Default local companion path: `..\OpenQ4` (sibling repo layout).
+- OpenQ4 build wrappers can invoke this repository directly from `..\OpenQ4-GameLibs`.
 
 ## Project Goals
 - Preserve original Quake 4 gameplay behavior.

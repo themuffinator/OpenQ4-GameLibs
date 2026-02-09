@@ -1,5 +1,5 @@
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "../Game_local.h"
 
@@ -55,9 +55,9 @@ idCVar si_dropWeaponsInBuyingModes(	"si_dropWeaponsInBuyingModes",	"0",		CVAR_GA
 // RITUAL END
 // RAVEN BEGIN
 // ddynerman: new gametype strings
-idCVar si_gameType(					"si_gameType",				si_gameTypeArgs[ 0 ],	CVAR_GAME | CVAR_SERVERINFO | PC_CVAR_ARCHIVE, "game type - singleplayer, DM, Tourney, Team DM, CTF, Arena CTF, or DeadZone", si_gameTypeArgs, idCmdSystem::ArgCompletion_String<si_gameTypeArgs> );
-idCVar si_map(						"si_map",					"mp/q4dm1",				CVAR_GAME | CVAR_SERVERINFO | PC_CVAR_ARCHIVE, "map to be played next on server", idCmdSystem::ArgCompletion_MapName );
-idCVar si_mapCycle(					"si_mapCycle",				"",						CVAR_GAME | CVAR_SERVERINFO | PC_CVAR_ARCHIVE, "map cycle list semicolon delimited" );
+idCVar si_gameType(					"si_gameType",				si_gameTypeArgs[ 0 ],	CVAR_GAME | CVAR_SERVERINFO, "game type - singleplayer, DM, Tourney, Team DM, CTF, Arena CTF, or DeadZone", si_gameTypeArgs, idCmdSystem::ArgCompletion_String<si_gameTypeArgs> );
+idCVar si_map(						"si_map",					"mp/q4dm1",				CVAR_GAME | CVAR_SERVERINFO, "map to be played next on server", idCmdSystem::ArgCompletion_MapName );
+idCVar si_mapCycle(					"si_mapCycle",				"",						CVAR_GAME | CVAR_SERVERINFO, "map cycle list semicolon delimited" );
 // bdube: raise player limit
 idCVar si_maxPlayers(				"si_maxPlayers",			"12",			CVAR_GAME | CVAR_SERVERINFO | PC_CVAR_ARCHIVE | CVAR_INTEGER, "max number of players allowed on the server", 1, 16 );
 // ddynerman: min players to start
@@ -82,9 +82,9 @@ idCVar si_teamDamage(				"si_teamDamage",			"0",			CVAR_GAME | CVAR_SERVERINFO |
 idCVar si_warmup(					"si_warmup",				"1",			CVAR_GAME | CVAR_SERVERINFO | PC_CVAR_ARCHIVE | CVAR_BOOL, "do pre-game warmup" );
 idCVar si_usePass(					"si_usePass",				"0",			CVAR_GAME | CVAR_SERVERINFO | PC_CVAR_ARCHIVE | CVAR_BOOL, "enable client password checking" );
 #ifdef _MPBETA
-	idCVar si_pure(					"si_pure",					"1",			CVAR_GAME | CVAR_SERVERINFO | CVAR_BOOL | CVAR_ROM, "server is pure and does not allow modified data" );
+	idCVar si_pure(					"si_pure",					"0",			CVAR_GAME | CVAR_SERVERINFO | CVAR_BOOL | CVAR_ROM, "server is pure and does not allow modified data" );
 #else
-	idCVar si_pure(					"si_pure",					"1",			CVAR_GAME | CVAR_SERVERINFO | CVAR_BOOL, "server is pure and does not allow modified data" );
+	idCVar si_pure(					"si_pure",					"0",			CVAR_GAME | CVAR_SERVERINFO | CVAR_BOOL, "server is pure and does not allow modified data" );
 #endif // _MPBETA
 idCVar si_spectators(				"si_spectators",			"1",			CVAR_GAME | CVAR_SERVERINFO | PC_CVAR_ARCHIVE | CVAR_BOOL, "allow spectators or require all clients to play" );
 idCVar si_shuffle(					"si_shuffle",				"0",			CVAR_GAME | CVAR_SERVERINFO | PC_CVAR_ARCHIVE | CVAR_BOOL, "shuffle teams after each round" );
@@ -120,6 +120,7 @@ idCVar ui_model_backup(				"ui_model_backup",			"",	CVAR_GAME | CVAR_USERINFO, "
 idCVar ui_model_marine(				"ui_model_marine",			"",	CVAR_GAME | CVAR_USERINFO | CVAR_ARCHIVE, "player model used on marine team in team games, blank uses default model" );
 idCVar ui_model_strogg(				"ui_model_strogg",			"",	CVAR_GAME | CVAR_USERINFO | CVAR_ARCHIVE, "player model used on strogg team in team games, blank uses default model" );
 idCVar ui_clan(						"ui_clan",					"",	CVAR_GAME | CVAR_USERINFO | PC_CVAR_ARCHIVE | CVAR_CASE_SENSITIVE | CVAR_SPECIAL_CONCAT, "player clan" );
+idCVar ui_handicap(					"ui_handicap",				"100",	CVAR_GAME | CVAR_USERINFO | CVAR_ARCHIVE | CVAR_INTEGER, "player handicap percentage", 1, 100 );
 idCVar ui_hitscanTint(				"ui_hitscanTint",			"120.0 0.6 1.0",	CVAR_GAME | CVAR_USERINFO | CVAR_ARCHIVE, "a tint applied to select hitscan effects.  Specified as a value in HSV color space. Hue [0.0-360.0] Saturation [0.0-1.0] Value [0.75-1.0]" );
 // RAVEN END
 idCVar ui_autoSwitch(				"ui_autoSwitch",			"1",			CVAR_GAME | CVAR_USERINFO | CVAR_ARCHIVE | CVAR_BOOL, "auto switch weapon" );
@@ -128,6 +129,13 @@ idCVar ui_showGun(					"ui_showGun",				"1",			CVAR_GAME | CVAR_USERINFO | CVAR_
 idCVar ui_ready(					"ui_ready",				si_readyArgs[ 0 ],	CVAR_GAME | CVAR_USERINFO, "player is ready to start playing", idCmdSystem::ArgCompletion_String<si_readyArgs> );
 idCVar ui_spectate(					"ui_spectate",		si_spectateArgs[ 0 ],	CVAR_GAME | CVAR_USERINFO, "play or spectate", idCmdSystem::ArgCompletion_String<si_spectateArgs> );
 idCVar ui_chat(						"ui_chat",					"0",			CVAR_GAME | CVAR_USERINFO | CVAR_BOOL | CVAR_ROM | CVAR_CHEAT, "player is chatting" );
+
+// voice chat user settings (referenced by multiplayer GUI)
+idCVar s_voiceChatSend(				"s_voiceChatSend",			"1",			CVAR_GAME | CVAR_USERINFO | CVAR_ARCHIVE | CVAR_BOOL, "allow sending voice chat" );
+idCVar s_voiceChatReceive(			"s_voiceChatReceive",		"1",			CVAR_GAME | CVAR_USERINFO | CVAR_ARCHIVE | CVAR_BOOL, "allow receiving voice chat" );
+idCVar s_voiceChatEcho(				"s_voiceChatEcho",			"0",			CVAR_GAME | CVAR_USERINFO | CVAR_ARCHIVE | CVAR_BOOL, "echo microphone back to speakers" );
+idCVar s_voiceVolume(				"s_voiceVolume",			"1",			CVAR_GAME | CVAR_ARCHIVE | CVAR_FLOAT, "voice chat receive volume", 0.0f, 1.0f );
+idCVar s_micInputLevel(				"s_micInputLevel",			"5",			CVAR_GAME | CVAR_ARCHIVE | CVAR_FLOAT, "microphone input level", 0.0f, 10.0f );
 
 // change anytime vars
 idCVar developer(					"developer",				"0",			CVAR_GAME | CVAR_BOOL, "" );
@@ -464,6 +472,9 @@ idCVar g_brassTime(					"g_brassTime",				"1",			CVAR_GAME | PC_CVAR_ARCHIVE | C
 idCVar g_gun_x(						"g_gunX",					"0",			CVAR_GAME | CVAR_FLOAT, "" );
 idCVar g_gun_y(						"g_gunY",					"0",			CVAR_GAME | CVAR_FLOAT, "" );
 idCVar g_gun_z(						"g_gunZ",					"0",			CVAR_GAME | CVAR_FLOAT, "" );
+idCVar cl_gun_x(					"cl_gun_x",					"0",			PC_CVAR_ARCHIVE | CVAR_FLOAT | CVAR_NOCHEAT, "client first-person weapon right offset" );
+idCVar cl_gun_y(					"cl_gun_y",					"0",			PC_CVAR_ARCHIVE | CVAR_FLOAT | CVAR_NOCHEAT, "client first-person weapon forward offset" );
+idCVar cl_gun_z(					"cl_gun_z",					"0",			PC_CVAR_ARCHIVE | CVAR_FLOAT | CVAR_NOCHEAT, "client first-person weapon up offset" );
 idCVar g_viewNodalX(				"g_viewNodalX",				"0",			CVAR_GAME | CVAR_FLOAT, "" );
 idCVar g_viewNodalZ(				"g_viewNodalZ",				"0",			CVAR_GAME | CVAR_FLOAT, "" );
 // RAVEN BEGIN
@@ -517,6 +528,13 @@ idCVar g_currentPlayback(			"g_currentPlayback",		"",				CVAR_GAME, "name of pla
 // RAVEN END
 idCVar g_testModelRotate(			"g_testModelRotate",		"0",			CVAR_GAME, "test model rotation speed" );
 idCVar g_testPostProcess(			"g_testPostProcess",		"",				CVAR_GAME, "name of material to draw over screen" );
+idCVar g_autoScreenshot(			"g_autoScreenshot",			"0",			CVAR_GAME | CVAR_BOOL | CVAR_NOCHEAT, "when enabled, take a screenshot after map load" );
+idCVar g_autoScreenshotDelayMs(	"g_autoScreenshotDelayMs",	"10000",		CVAR_GAME | CVAR_INTEGER | CVAR_NOCHEAT, "delay in ms after map load before taking an auto screenshot" );
+idCVar g_autoScreenshotQuit(		"g_autoScreenshotQuit",		"1",			CVAR_GAME | CVAR_BOOL | CVAR_NOCHEAT, "quit after taking an auto screenshot" );
+idCVar g_autoMachinegunImpact(		"g_autoMachinegunImpact",	"0",			CVAR_GAME | CVAR_BOOL | CVAR_NOCHEAT, "when enabled, auto-spawn a one-shot machinegun impact effect after map load" );
+idCVar g_autoMachinegunImpactDelayMs( "g_autoMachinegunImpactDelayMs", "10000",	CVAR_GAME | CVAR_INTEGER | CVAR_NOCHEAT, "delay in ms after map load before auto-spawning machinegun impact effect" );
+idCVar g_autoMachinegunImpactDistance( "g_autoMachinegunImpactDistance", "512",	CVAR_GAME | CVAR_FLOAT | CVAR_NOCHEAT, "trace distance for auto machinegun impact effect test" );
+idCVar g_autoMachinegunImpactEffect( "g_autoMachinegunImpactEffect", "",			CVAR_GAME | CVAR_NOCHEAT, "optional explicit effect decl name override for auto machinegun impact test" );
 idCVar g_testModelAnimate(			"g_testModelAnimate",		"0",			CVAR_GAME | CVAR_INTEGER, "test model animation,\n"
 																							"0 = cycle anim with origin reset\n"
 																							"1 = cycle anim with fixed origin\n"
@@ -559,6 +577,8 @@ idCVar password(					"password",					"",				CVAR_GAME | CVAR_NOCHEAT, "client pa
 idCVar g_gameReviewPause(			"g_gameReviewPause",		"30",			CVAR_GAME | CVAR_NETWORKSYNC | CVAR_INTEGER | PC_CVAR_ARCHIVE, "scores review time in seconds (at end game)", 2, 3600 );
 // RAVEN END
 idCVar net_clientPredictGUI(		"net_clientPredictGUI",		"1",			CVAR_GAME | CVAR_BOOL, "test guis in networking without prediction" );
+idCVar net_menulanserver(			"net_menulanserver",		"0",			CVAR_GAME | CVAR_ARCHIVE | CVAR_BOOL, "treat menu server list as LAN only" );
+idCVar net_serverMenuDedicated(	"net_serverMenuDedicated",	"0",			CVAR_GAME | CVAR_ARCHIVE | CVAR_BOOL, "menu dedicated server toggle" );
 
 idCVar si_voteFlags(				"si_voteFlags",				"0",			CVAR_GAME | CVAR_SERVERINFO | CVAR_INTEGER | PC_CVAR_ARCHIVE, "vote flags. bit mask of votes not allowed on this server\n"
 																					"bit  0 (+1)    restart now\n"
@@ -607,41 +627,3 @@ idCVar si_serverURL(				"si_serverURL",				"",				CVAR_GAME | CVAR_SERVERINFO | 
 
 
 idCVar net_warnStale( "net_warnStale", "1", CVAR_INTEGER | CVAR_GAME | CVAR_NOCHEAT, "Warn stale entity occurences on network client - == 1: only on ClientStale call, > 1 all times" );
-
-// RAVEN BEGIN
-// bdube: cvar helps
-static	idCVarHelp	help_g_showHud ( "g_showHud", "Show Player HUD", "Off;On", "0;1", CVARHELP_GAME );
-static	idCVarHelp	help_g_showGun ( "g_showGun", "Show Player Weapon", "Off;On", "0;1", CVARHELP_GAME );
-static	idCVarHelp	help_g_showTargets ( "g_showTargets", "Show Targets", "Off;On", "0;1", CVARHELP_GAME );
-static	idCVarHelp	help_g_showTriggers ( "g_showTriggers", "Show Triggers", "Off;On", "0;1", CVARHELP_GAME );
-static	idCVarHelp	help_g_showEntityInfo ( "g_showEntityInfo", "Show Entity Information", "Off;On", "0;1", CVARHELP_GAME );
-static	idCVarHelp	help_g_timeentities ( "g_timeentities", "Show Entity Times", "Off;0.5s;1.0s", "0;0.5;1.0", CVARHELP_GAME );
-static	idCVarHelp	help_g_showActiveEntities ( "g_showActiveEntities", "Show Active Entities", "Off;On", "0;1", CVARHELP_GAME );
-static	idCVarHelp	help_g_frametime ( "g_frametime", "Show Game Frame Times", "Off;On", "0;1", CVARHELP_GAME );
-
-static	idCVarHelp	help_g_showCollisionWorld ( "g_showCollisionWorld", "Show Collision World", "Off;On", "0;1", CVARHELP_PHYSICS );
-static	idCVarHelp	help_g_showCollisionModels ( "g_showCollisionModels", "Show Collision Models", "Off;On", "0;1", CVARHELP_PHYSICS );
-static	idCVarHelp	help_g_showCollisionTraces ( "g_showCollisionTraces", "Show Collision Traces", "Off;Info;Lines", "0;1;2", CVARHELP_PHYSICS );
-static	idCVarHelp	help_rb_showActive ( "rb_showActive", "Show Active Rigid Bodies", "Off;On", "0;1", CVARHELP_PHYSICS );
-static	idCVarHelp	help_rb_showTimings ( "rb_showTimings", "Show Rigid Body Timings", "Off;On", "0;1", CVARHELP_PHYSICS );
-static	idCVarHelp	help_af_showTimings ( "af_showTimings", "Show AF Timings", "Off;On", "0;1", CVARHELP_PHYSICS );
-
-// nmckenzie: ai cvar helps
-static	idCVarHelp	help_g_aas_showAreas( "aas_showAreas", "Show AAS areas", "Off;Single Current;Single All;Complete", "0;1;2;3", CVARHELP_AI );
-static	idCVarHelp	help_g_aas_showProblemAreas( "aas_showProblemAreas", "Show AAS areas with Problems", "Off;Single Current;Single All;Complete", "0;1;2;3", CVARHELP_AI );
-static	idCVarHelp	help_g_aas_showPath( "aas_showPath", "Show AAS Paths", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_aas_showFlyPath( "aas_showFlyPath", "Show AAS Flying Paths", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_aas_showWallEdges( "aas_showWallEdges", "Show AAS Wall Edges", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_aas_showHideArea( "aas_showHideArea", "Show AAS Hide Areas", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_aas_goalArea( "aas_goalArea", "Show AAS Goal Areas", "Off;On", "0;1", CVARHELP_AI );
-
-static	idCVarHelp	help_g_ai_debugMove( "ai_debugMove", "Show Movement for monsters", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_ai_debugTrajectory( "ai_debugTrajectory", "Show Grenade tests for monsters", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_ai_showCombatNodes( "ai_showCombatNodes", "Show attack cones for monsters", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_ai_showPaths( "ai_showPaths", "Show all path_* entities", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_ai_showObstacleAvoidance( "ai_showObstacleAvoidance", "Show obstacle avoidance", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_ai_speeds( "ai_speeds", "Show performance load of AI", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_ai_animShow( "ai_animShow", "List animations when used.", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_ai_showTacticalFeatures( "ai_showTacticalFeatures", "Show player view tactical features.", "Off;On", "0;1", CVARHELP_AI );
-static	idCVarHelp	help_g_ai_useRVMasterMove( "ai_useRVMasterMove", "Use new master move functions.", "Off;On", "0;1", CVARHELP_AI );
-// RAVEN END

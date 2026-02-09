@@ -20,6 +20,7 @@ This file describes project goals, rules, and upstream credits for anyone workin
 
 **Repository Rules (Agent-Only)**
 - Compatibility with Quake 4 SDK behavior is the primary requirement.
+- Treat this repo and `E:\Repositories\OpenQ4` as one development workspace; cross-repo coordination is expected, not optional.
 - Treat public game-library interfaces used by the engine as stability boundaries unless coordinated cross-repo changes are intentional.
 - Prefer engine or code fixes over shipping replacement content files when resolving compatibility issues.
 - Keep `README.md` end-user focused: no local machine paths, no maintainer-only rules, and no internal-only process notes.
@@ -29,10 +30,14 @@ This file describes project goals, rules, and upstream credits for anyone workin
 - Keep credits accurate and append attributions for newly integrated upstream/third-party work.
 
 **Development Procedure (Recommended)**
-1. Build game libraries with Meson/Ninja from an x86 Visual Studio toolchain shell (`meson setup builddir --backend ninja --vsenv` then `meson compile -C builddir`).
+1. Build game libraries with Meson/Ninja (`powershell -ExecutionPolicy Bypass -File tools/build/meson_setup.ps1 setup --wipe builddir . --backend ninja --buildtype release --vsenv`, then `... meson_setup.ps1 compile -C builddir`).
 2. Validate behavior using OpenQ4 (`E:\Repositories\OpenQ4`) against original Quake 4 assets.
 3. Review runtime logs in the active Quake 4 install.
 4. Iterate until compatibility and stability targets are met.
+
+**Cross-Repo Workflow (Agent-Only)**
+- OpenQ4 (`tools/build/meson_setup.ps1`) can trigger this repo's build during OpenQ4 compile runs when `OPENQ4_BUILD_GAMELIBS=1`.
+- OpenQ4 `src/game` is treated as a synchronized mirror of `OpenQ4-GameLibs/source/game`; apply canonical game-library source edits here first.
 
 **Local References (Agent-Only, Not Included In Repo)**
 - OpenQ4 engine project: `E:\Repositories\OpenQ4`

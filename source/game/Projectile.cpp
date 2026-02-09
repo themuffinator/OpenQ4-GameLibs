@@ -1,10 +1,10 @@
 // RAVEN BEGIN
-// bdube: note that this file is no longer merged with Doom3 updates
+// bdube: note that this file is no longer merged with legacy engine updates
 //
 // MERGE_DATE 09/30/2004
 
-#include "../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "Game_local.h"
 #include "ai/AI_Manager.h"

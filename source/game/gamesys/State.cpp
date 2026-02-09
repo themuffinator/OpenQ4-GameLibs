@@ -1,5 +1,5 @@
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "../Game_local.h"
 
@@ -293,6 +293,10 @@ stateResult_t rvStateThread::Execute ( void ) {
 				gameLocal.Error ( "rvStateThread: error reported by state '%s (%d)'", stateName, stateStage );
 				fl.executing = false;
 				return SRESULT_ERROR;				
+		}
+
+		if (lastResult == SRESULT_DONE) {
+			owner->StateThreadChanged();
 		}
 
 		// Dont remove the node if it was interrupted or cleared in the last process

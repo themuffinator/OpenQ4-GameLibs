@@ -23,6 +23,7 @@ common_cpp_args = [
   '/FS',
   '/source-charset:windows-1252',
   '/execution-charset:windows-1252',
+  '/Zc:strictStrings-',
   '/wd4091',
   '/wd4456',
   '/wd4457',
@@ -43,13 +44,12 @@ endif
 common_defines = [
   'Q4SDK',
   '_WINDOWS',
+  'WIN32',
+  'USE_OPENAL',
 ]
 
 if release_like
-  common_defines += [
-    'NDEBUG',
-    '_FINAL',
-  ]
+  common_defines += ['NDEBUG']
 else
   common_defines += ['_DEBUG']
 endif
@@ -85,7 +85,7 @@ idlib = static_library(
   'idLib',
   idlib_sources,
   include_directories : source_inc,
-  cpp_args : common_cpp_args + common_define_args,
+  cpp_args : common_cpp_args + common_define_args + ['/DGAME_DLL'],
   install : false,
 )
 

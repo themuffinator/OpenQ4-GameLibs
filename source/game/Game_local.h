@@ -46,6 +46,9 @@ class idWorldspawn;
 class idTestModel;
 class idAAS;
 class idAI;
+// jmarshall
+class rvmBot;
+// jmarshall end
 // RAVEN BEGIN
 // bdube: not using id effects
 //class idSmokeParticles;
@@ -313,8 +316,27 @@ private:
 class rvGravityArea;
 // RAVEN END
 
+// jmarshall
+struct rvmGameRender_t {
+	idRenderTexture* forwardRenderPassRT;
+	idRenderTexture* postProcessRT[2];
+	idRenderTexture* forwardRenderPassResolvedRT;
+	const idMaterial* noPostProcessMaterial;
+	const idMaterial* casPostProcessMaterial;
+	const idMaterial* blackPostProcessMaterial;
+	const idMaterial* resolvePostProcessMaterial;
+	const idMaterial* smaaEdgePostProcessMaterial;
+	const idMaterial* smaaBlendPostProcessMaterial;
+	bool postProcessAvailable;
+	bool smaaAvailable;
+	int videoRestartCount;
+};
+// jmarshall end
+
 //============================================================================
 // ddynerman: moved MultiplayerGame.h down here, so it can use more stuff in Game_local (idEntityPtr)
+#include "mp/Buying.h"
+#include "mp/Tourney.h"
 #include "MultiplayerGame.h"
 
 //============================================================================
@@ -390,6 +412,10 @@ public:
 	int						time;					// in msec
 	int						msec;					// time since last update in milliseconds
 	int						mHz;					// hertz
+	int						autoScreenshotStartTime;
+	bool					autoScreenshotPending;
+	int						autoMachinegunImpactStartTime;
+	bool					autoMachinegunImpactPending;
 
 	int						vacuumAreaNum;			// -1 if level doesn't have any outside areas
 
@@ -403,6 +429,7 @@ public:
 	bool					isMultiplayer;			// set if the game is run in multiplayer mode
 	bool					isServer;				// set if the game is run for a dedicated or listen server
 	bool					isClient;				// set if the game is run for a client
+	bool					mpInteractionsGenerated; // true once interactions are generated after the first game frame
 													// discriminates between the RunFrame path and the ClientPrediction path
 													// NOTE: on a listen server, isClient is false
 // RAVEN BEGIN
@@ -474,27 +501,66 @@ public:
 // RAVEN END
 	virtual void			MapShutdown( void );
 	virtual void			CacheDictionaryMedia( const idDict *dict );
-	virtual void			SpawnPlayer( int clientNum );
+	virtual void			SpawnPlayer( int clientNum, bool isBot, const char* botName);
 // RAVEN BEGIN
 	virtual gameReturn_t	RunFrame( const usercmd_t *clientCmds, int activeEditors, bool lastCatchupFrame, int serverGameFrame );
 	virtual	void			MenuFrame( void );
 // RAVEN END
 	virtual void			RepeaterFrame( const userOrigin_t *clientOrigins, bool lastCatchupFrame, int spoolTime = 0 ) {};
 	virtual bool			Draw( int clientNum );
+	void					CheckAutoMachinegunImpact( void );
+	void					CheckAutoScreenshot( void );
 	virtual escReply_t		HandleESC( idUserInterface **gui );
 	virtual idUserInterface	*StartMenu( void );
 	virtual const char *	HandleGuiCommands( const char *menuCommand );
 	virtual void			HandleMainMenuCommands( const char *menuCommand, idUserInterface *gui );
 	virtual allowReply_t	ServerAllowClient( int clientId, int numClients, const char *IP, const char *guid, const char *password, const char *privatePassword, char reason[MAX_STRING_CHARS] );
 	virtual void			ServerClientConnect( int clientNum, const char *guid );
-	virtual void			ServerClientBegin( int clientNum );
+	virtual void			ServerClientBegin( int clientNum, bool isBot, const char* botName);
 	virtual void			ServerClientDisconnect( int clientNum );
 	virtual void			ServerWriteInitialReliableMessages( int clientNum );
 	virtual allowReply_t	RepeaterAllowClient( int clientId, int numClients, const char *IP, const char *guid, bool repeater, const char *password, const char *privatePassword, char reason[MAX_STRING_CHARS] ) { idStr::Copynz( reason, "#str_107239" /* zinx - FIXME - not banned... */, sizeof(reason) ); return ALLOW_NO; };
 	virtual void			RepeaterClientConnect( int clientNum ) {assert(false);};
 	virtual void			RepeaterClientBegin( int clientNum ) {assert(false);};
 	virtual void			RepeaterClientDisconnect( int clientNum ) {assert(false);};
-	virtual void			RepeaterWriteInitialReliableMessages( int clientNum ) {assert(false);};
+	virtual void			RepeaterWriteInitialReliableMessages( int clientNum ) {assert(false);};	
+
+// jmarshall
+	virtual void			GetRandomBotName(int clientNum, idStr& name);
+	virtual int				TravelTimeToGoal(const idVec3& origin, const idVec3& goal);
+	virtual int				GetBotItemEntry(const char* name);
+
+	void					AddBot(const char* botName);
+
+	idAAS* GetBotAAS(void)
+	{
+		if (NumAAS() == 0)
+			return nullptr;
+
+		return GetAAS(0);
+	}
+
+	void					RegisterBot(rvmBot* bot)
+	{
+		registeredBots.AddUnique(bot);
+	}
+	void					UnRegisterBot(rvmBot* bot)
+	{
+		registeredBots.Remove(bot);
+	}
+
+	float					SysScriptTime(void) const
+	{
+		return MS2SEC(realClientTime);
+	}
+	float					SysScriptFrameTime(void) const
+	{
+		return MS2SEC(time - previousTime);
+	}
+
+	void	Trace(trace_t& results, const idVec3& start, const idVec3& end, int contentMask, int passEntity);
+// jmarshall end
+
 // RAVEN BEGIN
 // jnewquist: Use dword array to match pvs array so we don't have endianness problems.
 	virtual void			ServerWriteSnapshot( int clientNum, int sequence, idBitMsg &msg, dword *clientInPVS, int numPVSClients, int lastSnapshotFrame );
@@ -653,7 +719,7 @@ public:
 	// used to skip one when registering entities, leaving an empty entity in the array
 	void					SkipEntityIndex( void );
 
-	bool					RequirementMet( idEntity *activator, const idStr &requires, int removeItem );
+	bool					RequirementMet( idEntity *activator, const idStr &requirement, int removeItem );
 
 // RITUAL BEGIN
 // squirrel: accessor for si_weaponStay checks
@@ -687,7 +753,6 @@ public:
 	void					SetPortalSky( idCamera *cam );
 // RAVEN END
 
-	float					GetScreenAspectRatio( void ) const;
 	void					CalcFov( float base_fov, float &fov_x, float &fov_y ) const;
 
 	void					AddEntityToHash( const char *name, idEntity *ent );
@@ -911,13 +976,12 @@ public:
 	void					ServerSetMinSpawnIndex( void );
 	void					ServerSetEntityIndexWatermark( int instanceID );
 
-private:
 // RAVEN BEGIN
 // ddynerman: multiple instance for MP
 	idList<idClip*>			clip;					// collision detection
 	idList<rvInstance*>		instances;
 // RAVEN END
-
+private:
 	// keep watermarks on the high entity index
 	// server transmits this to clients so they use the right entity layout
 	idList<int>				instancesEntityIndexWatermarks;
@@ -997,6 +1061,10 @@ private:
 	idDict					newInfo;
 
 	idStrList				shakeSounds;
+
+// jmarshall
+	rvmGameRender_t			gameRender;
+// jmarshall end
 
 	byte					lagometer[ LAGO_IMG_HEIGHT ][ LAGO_IMG_WIDTH ][ 4 ];
 
@@ -1101,13 +1169,29 @@ public:
 	pvsHandle_t				GetClientPVS( idPlayer *player, pvsType_t type );
 
 	int						GetCurrentDemoProtocol( void ) { return demo_protocol; }
-
+// jmarshall
+	void					RenderScene(const renderView_t* view, idRenderWorld* renderWorld, idCamera* portalSky);
+private:	
+	void					ResizeRenderTextures(int width, int height);
+	void					InitGameRenderSystem(void);
+	void					ShutdownGameRenderSystem(void);
+// jmarshall end
 private:
 	char					clientGuids[ MAX_CLIENTS ][ CLIENT_GUID_LENGTH ];
 	idList<mpBanInfo_t>		banList;
 	bool					banListLoaded;
 	bool					banListChanged;
 // RAVEN END
+
+// jmarshall
+	void					AlertBots(idPlayer* player, idVec3 alert_position);
+
+	const idDeclEntityDef* botItemTable;;
+
+	idList<rvmBot*> registeredBots;
+
+	idAAS* bot_aas;
+// jmarshall end
 };
 
 //============================================================================
@@ -1123,9 +1207,11 @@ extern idAnimManager		*animationLib;
 
 ID_INLINE void idGameLocal::WriteDecl( idBitMsg &msg, const idDecl *decl ) {
 	assert( decl );
+// jmarshall - changed to a warning.
 	if ( decl->IsImplicit() ) {
-		gameLocal.Error( "WriteDecl: %s decl %s ( index %d ) is implicit", declManager->GetDeclNameFromType( decl->GetType() ), decl->GetName(), decl->Index() );
+		gameLocal.Warning( "WriteDecl: %s decl %s ( index %d ) is implicit", declManager->GetDeclNameFromType( decl->GetType() ), decl->GetName(), decl->Index() );
 	}
+// jmarshall end
 	msg.WriteLong( decl->Index() );
 }
 
@@ -1197,7 +1283,7 @@ const float DEFAULT_GRAVITY_MP		= 800.0f;
 #define DEFAULT_MP_GRAVITY_STRING	"800"
 const idVec3 DEFAULT_GRAVITY_VEC3( 0, 0, -DEFAULT_GRAVITY );
 
-const int	CINEMATIC_SKIP_DELAY	= SEC2MS( 2.0f );
+const int	CINEMATIC_SKIP_DELAY	= SEC2MS( 1.0f );
 
 //============================================================================
 
@@ -1409,5 +1495,7 @@ ID_INLINE idEntityPtr<type>::operator type * ( void ) const {
 // RAVEN END
 
 #include "../idlib/containers/ListGame.h"
+
+#include "bots/bot.h"
 
 #endif	/* !__GAME_LOCAL_H__ */

@@ -1,6 +1,6 @@
 
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "../Game_local.h"
 // RAVEN BEGIN
@@ -25,19 +25,8 @@
 #endif
 // RAVEN END
 
-#if defined(_WIN32)
-	#if defined(__has_include)
-		#if __has_include("TypeInfo.h")
-			#include "TypeInfo.h"
-		#else
-			#include "NoGameTypeInfo.h"
-		#endif
-	#else
-		#include "TypeInfo.h"
-	#endif
-#else
-	#include "NoGameTypeInfo.h"
-#endif
+#include "NoGameTypeInfo.h"
+
 
 /*
 ==================
@@ -1787,24 +1776,26 @@ Cmd_CollisionModelInfo_f
 ==================
 */
 static void Cmd_CollisionModelInfo_f( const idCmdArgs &args ) {
-	const char *value;
-
-	if ( !gameLocal.CheatsOk() ) {
-		return;
-	}
-
-	if ( args.Argc () < 2 ) {
-		gameLocal.Printf( "usage: collisionModelInfo <modelNum>\n"
-					"use 'all' instead of the model number for accumulated info\n" );
-		return;
-	}
-
-	value = args.Argv( 1 );
-	if ( !idStr::Icmp( value, "all" ) ) {
-		collisionModelManager->ModelInfo( -1 );
-	} else {
-		collisionModelManager->ModelInfo( atoi(value) );
-	}
+// jmarshall - extra debug.
+	//const char *value;
+	//
+	//if ( !gameLocal.CheatsOk() ) {
+	//	return;
+	//}
+	//
+	//if ( args.Argc () < 2 ) {
+	//	gameLocal.Printf( "usage: collisionModelInfo <modelNum>\n"
+	//				"use 'all' instead of the model number for accumulated info\n" );
+	//	return;
+	//}
+	//
+	//value = args.Argv( 1 );
+	//if ( !idStr::Icmp( value, "all" ) ) {
+	//	collisionModelManager->ModelInfo( -1 );
+	//} else {
+	//	collisionModelManager->ModelInfo( atoi(value) );
+	//}
+// jmarshall end
 }
 
 /*
@@ -2990,22 +2981,22 @@ void Cmd_SetPMCVars_f ( const idCmdArgs &args ) {
 }
 
 void Cmd_FadeSound_f( const idCmdArgs &args )	{
-
-	if( args.Argc() < 2)	{
-		return;
-	}
-
-	float fadeDB = 0.0f;
-	float fadeTime = 0.0f;
-
-	idStr _fadeDB = args.Argv( 1);
-	fadeDB = atof( _fadeDB );
-
-	idStr _fadeTime = args.Argv( 2);
-	fadeTime = atof( _fadeTime );
-
-	soundSystem->FadeSoundClasses( SOUNDWORLD_GAME, SOUND_CLASS_MUSICAL, 0.0f - fadeDB, fadeTime );
-
+// jmarshall: eval is this needed?
+	//if( args.Argc() < 2)	{
+	//	return;
+	//}
+	//
+	//float fadeDB = 0.0f;
+	//float fadeTime = 0.0f;
+	//
+	//idStr _fadeDB = args.Argv( 1);
+	//fadeDB = atof( _fadeDB );
+	//
+	//idStr _fadeTime = args.Argv( 2);
+	//fadeTime = atof( _fadeTime );
+	//
+	//soundSystem->FadeSoundClasses( SOUNDWORLD_GAME, SOUND_CLASS_MUSICAL, 0.0f - fadeDB, fadeTime );
+// jmarshall end
 }
 
 void Cmd_TestClientModel_f( const idCmdArgs& args ) {
@@ -3046,6 +3037,29 @@ void Cmd_ClientOverflowReliable_f( const idCmdArgs& args ) {
 }
 #endif
 
+// jmarshall
+void Cmd_AddBot_f(const idCmdArgs& args)
+{
+	if (args.Argc() < 2)
+	{
+		common->Warning("USAGE: addbot <botfile> e.g. addbot major or addbot dark - see botfiles/bots for more details\n");
+		return;
+	}
+	gameLocal.AddBot(args.Argv(1));
+}
+
+void Cmd_FillBots_f(const idCmdArgs& args)
+{
+	gameLocal.AddBot("dark");
+	gameLocal.AddBot("major");
+	gameLocal.AddBot("gargoyle");
+	gameLocal.AddBot("skelebot");
+	gameLocal.AddBot("sly");
+	gameLocal.AddBot("neko");
+	gameLocal.AddBot("sarge");
+}
+// jmarshall end
+
 /*
 =================
 idGameLocal::InitConsoleCommands
@@ -3061,6 +3075,12 @@ void idGameLocal::InitConsoleCommands( void ) {
 //	cmdSystem->AddCommand( "writeGameState",		WriteGameState_f,			CMD_FL_GAME,				"write game state" );
 //	cmdSystem->AddCommand( "testSaveGame",			TestSaveGame_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"test a save game for a level" );
 // RAVEN END
+
+// jmarshall
+	cmdSystem->AddCommand("addbot", Cmd_AddBot_f, CMD_FL_GAME, "adds a multiplayer bot");
+	cmdSystem->AddCommand("fillbots", Cmd_FillBots_f, CMD_FL_GAME, "fill bots");
+// jmarshall end
+
 	cmdSystem->AddCommand( "game_memory",			idClass::DisplayInfo_f,		CMD_FL_GAME,				"displays game class info" );
 	cmdSystem->AddCommand( "listClasses",			idClass::ListClasses_f,		CMD_FL_GAME,				"lists game classes" );
 	cmdSystem->AddCommand( "listThreads",			idThread::ListThreads_f,	CMD_FL_GAME|CMD_FL_CHEAT,	"lists script threads" );

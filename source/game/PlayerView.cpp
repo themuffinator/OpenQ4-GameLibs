@@ -1,10 +1,10 @@
 // RAVEN BEGIN
-// bdube: note that this file is no longer merged with Doom3 updates
+// bdube: note that this file is no longer merged with legacy engine updates
 //
 // MERGE_DATE 07/07/2004
 
-#include "../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "Game_local.h"
 
@@ -13,47 +13,6 @@
 #endif
 
 const int IMPULSE_DELAY = 150;
-
-/*
-======================
-GetAspectCorrectScreenRect
-======================
-*/
-static void GetAspectCorrectScreenRect( float &x, float &y, float &w, float &h ) {
-	const float baseAspect = ( float )SCREEN_WIDTH / ( float )SCREEN_HEIGHT;
-	const float currentAspect = idMath::ClampFloat( 0.1f, 10.0f, gameLocal.GetScreenAspectRatio() );
-
-	if ( currentAspect >= baseAspect ) {
-		w = SCREEN_HEIGHT * currentAspect;
-		h = SCREEN_HEIGHT;
-		x = ( SCREEN_WIDTH - w ) * 0.5f;
-		y = 0.0f;
-	} else {
-		w = SCREEN_WIDTH;
-		h = SCREEN_WIDTH / currentAspect;
-		x = 0.0f;
-		y = ( SCREEN_HEIGHT - h ) * 0.5f;
-	}
-}
-
-/*
-======================
-DrawAspectCorrectFullscreenMaterial
-======================
-*/
-static void DrawAspectCorrectFullscreenMaterial( const idMaterial *material ) {
-	float x;
-	float y;
-	float w;
-	float h;
-
-	if ( material == NULL ) {
-		return;
-	}
-
-	GetAspectCorrectScreenRect( x, y, w, h );
-	renderSystem->DrawStretchPic( x, y, w, h, 0.0f, 0.0f, 1.0f, 1.0f, material );
-}
 /*
 ==============
 idPlayerView::idPlayerView
@@ -541,14 +500,18 @@ void idPlayerView::SingleView( idUserInterface *hud, const renderView_t *view, i
 	}
 
 	if ( !( RF_GUI_ONLY & renderFlags ) ) {
+// jmarshall
 		// jscott: portal sky rendering with KRABS
-		idCamera *portalSky = gameLocal.GetPortalSky();
-		if( portalSky ) {
-			renderView_t portalSkyView = *view;
-			portalSky->GetViewParms( &portalSkyView );
-			gameRenderWorld->RenderScene( &portalSkyView, ( renderFlags & ( ~RF_PRIMARY_VIEW ) ) | RF_DEFER_COMMAND_SUBMIT | RF_PORTAL_SKY );
-		}
-		gameRenderWorld->RenderScene( view, renderFlags | RF_PENUMBRA_MAP );
+		//idCamera *portalSky = gameLocal.GetPortalSky();
+		//if( portalSky ) {
+		//	renderView_t portalSkyView = *view;
+		//	portalSky->GetViewParms( &portalSkyView );
+		//	gameRenderWorld->RenderScene( &portalSkyView );
+		//}
+		//gameRenderWorld->RenderScene( view );
+
+		gameLocal.RenderScene(view, gameRenderWorld, gameLocal.GetPortalSky());
+// jmarshall end
 	}
 
 	if ( RF_NO_GUI & renderFlags ) {
@@ -578,7 +541,7 @@ void idPlayerView::SingleView( idUserInterface *hud, const renderView_t *view, i
 		// Render tunnel vision
 		if ( gameLocal.time < tvFinishTime ) {
 			renderSystem->SetColor4( 1.0f, 1.0f, 1.0f, tvScale * ((float)(tvFinishTime - gameLocal.time) / (float)(tvFinishTime - tvStartTime)) );
-			DrawAspectCorrectFullscreenMaterial( tunnelMaterial );
+			renderSystem->DrawStretchPic( 0.0f, 0.0f, 640.0f, 480.0f, 0.0f, 0.0f, 1.0f, 1.0f, tunnelMaterial );
 		}
 
 		player->DrawHUD( hud );
@@ -625,7 +588,7 @@ void idPlayerView::SingleView( idUserInterface *hud, const renderView_t *view, i
 			g_testPostProcess.SetString( "" );
 		} else {
 			renderSystem->SetColor4( 1.0f, 1.0f, 1.0f, 1.0f );
-			DrawAspectCorrectFullscreenMaterial( mtr );
+			renderSystem->DrawStretchPic( 0.0f, 0.0f, 640.0f, 480.0f, 0.0f, 0.0f, 1.0f, 1.0f, mtr );
 		}
 	}
 }
@@ -665,8 +628,8 @@ void idPlayerView::DoubleVision( idUserInterface *hud, const renderView_t *view,
 	renderSystem->SetColor4( color.x, color.y, color.z, 1.0f );
 // RAVEN BEGIN
 // jnewquist: Call DrawStretchCopy, which will flip the texcoords for D3D
-	renderSystem->DrawStretchCopy( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, shift, 1, 1, 0, dvMaterial );
-	renderSystem->DrawStretchCopy( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 1, 1-shift, 0, dvMaterialBlend );
+	//renderSystem->DrawStretchCopy( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, shift, 1, 1, 0, dvMaterial );
+	//renderSystem->DrawStretchCopy( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 1, 1-shift, 0, dvMaterialBlend );
 // RAVEN END
 }
 
@@ -741,7 +704,7 @@ void idPlayerView::ScreenFade() {
 
 	if ( fadeColor[ 3 ] != 0.0f ) {
 		renderSystem->SetColor4( fadeColor[ 0 ], fadeColor[ 1 ], fadeColor[ 2 ], fadeColor[ 3 ] );
-		DrawAspectCorrectFullscreenMaterial( declManager->FindMaterial( "_white" ) );
+		renderSystem->DrawStretchPic( 0, 0, 640, 480, 0, 0, 1, 1, declManager->FindMaterial( "_white" ) );
 	}
 }
 
@@ -764,7 +727,7 @@ void idPlayerView::InfluenceVision( idUserInterface *hud, const renderView_t *vi
 	if ( player->GetInfluenceMaterial() ) {
 		SingleView( hud, view );
 		renderSystem->SetColor4( 1.0f, 1.0f, 1.0f, pct );
-		DrawAspectCorrectFullscreenMaterial( player->GetInfluenceMaterial() );
+		renderSystem->DrawStretchPic( 0.0f, 0.0f, 640.0f, 480.0f, 0.0f, 0.0f, 1.0f, 1.0f, player->GetInfluenceMaterial() );
 	} else if ( player->GetInfluenceEntity() == NULL ) {
 		SingleView( hud, view, RF_NO_GUI );
 		return;
@@ -787,6 +750,21 @@ void idPlayerView::RenderPlayerView( idUserInterface *hud ) {
 	const renderView_t *view = player->GetRenderView();
 	if ( !view ) {
 		return;
+	}
+
+	renderView_t *mutableView = player->GetRenderView();
+	if ( mutableView ) {
+		idCamera *camera = player->GetPrivateCameraView();
+		if ( !camera ) {
+			camera = gameLocal.GetCamera();
+		}
+
+		if ( camera ) {
+			camera->GetViewParms( mutableView );
+		} else {
+			gameLocal.CalcFov( player->CalcFov( true ), mutableView->fov_x, mutableView->fov_y );
+		}
+		view = mutableView;
 	}
 	
 	bool guiRendered = false;

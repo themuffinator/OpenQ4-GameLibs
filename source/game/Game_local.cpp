@@ -1,5 +1,5 @@
-#include "../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "Game_local.h"
 
@@ -40,11 +40,15 @@ idCVar *					idCVar::staticVars = NULL;
 
 // RAVEN BEGIN
 // rjohnson: new help system for cvar ui
-idCVarHelp *				idCVarHelp::staticCVarHelps = NULL;
-idCVarHelp *				idCVarHelp::staticCVarHelpsTail = NULL;
+//idCVarHelp *				idCVarHelp::staticCVarHelps = NULL;
+//idCVarHelp *				idCVarHelp::staticCVarHelpsTail = NULL;
 // RAVEN END
 
 idCVar com_forceGenericSIMD( "com_forceGenericSIMD", "0", CVAR_BOOL|CVAR_SYSTEM, "force generic platform independent SIMD" );
+
+int Sys_Milliseconds( void ) {
+	return sys ? sys->Milliseconds() : 0;
+}
 
 #endif
 
@@ -267,6 +271,20 @@ void idGameLocal::Clear( void ) {
 	world = NULL;
 	frameCommandThread = NULL;
 	testmodel = NULL;
+
+	gameRender.forwardRenderPassRT = NULL;
+	gameRender.postProcessRT[0] = NULL;
+	gameRender.postProcessRT[1] = NULL;
+	gameRender.forwardRenderPassResolvedRT = NULL;
+	gameRender.noPostProcessMaterial = NULL;
+	gameRender.casPostProcessMaterial = NULL;
+	gameRender.blackPostProcessMaterial = NULL;
+	gameRender.resolvePostProcessMaterial = NULL;
+	gameRender.smaaEdgePostProcessMaterial = NULL;
+	gameRender.smaaBlendPostProcessMaterial = NULL;
+	gameRender.postProcessAvailable = false;
+	gameRender.smaaAvailable = false;
+	gameRender.videoRestartCount = 0;
 // RAVEN BEGIN
 // bdube: not using id effects
 //	testFx = NULL;
@@ -293,6 +311,10 @@ void idGameLocal::Clear( void ) {
 	framenum = 0;
 	previousTime = 0;
 	time = 0;
+	autoScreenshotStartTime = 0;
+	autoScreenshotPending = false;
+	autoMachinegunImpactStartTime = 0;
+	autoMachinegunImpactPending = false;
 	vacuumAreaNum = 0;
 
 // RAVEN BEGIN
@@ -340,6 +362,7 @@ void idGameLocal::Clear( void ) {
 	isMultiplayer = false;
 	isServer = false;
 	isClient = false;
+	mpInteractionsGenerated = false;
 	realClientTime = 0;
 	isNewFrame = true;
 	entityDefBits = 0;
@@ -445,6 +468,12 @@ void idGameLocal::Init( void ) {
 // RAVEN BEGIN
 // jsinger: these need to be initialized after the InitAllocator call above in order
 //          to avoid crashes when the allocator is used.
+	if ( animationLib != NULL ) {
+		// When reloading the engine, declManager teardown has already released idAnim refs.
+		animationLib->Shutdown();
+		delete animationLib;
+		animationLib = NULL;
+	}
 	animationLib = new idAnimManager();
 	visemeTable100 = new idHashTable<rvViseme>;
 	visemeTable66 = new idHashTable<rvViseme>;
@@ -457,7 +486,7 @@ void idGameLocal::Init( void ) {
 
 // RAVEN BEGIN
 // rjohnson: new help system for cvar ui
-	idCVarHelp::RegisterStatics();
+	//idCVarHelp::RegisterStatics();
 
 // jsinger: added to support serialization/deserialization of binary decls
 #ifdef RV_BINARYDECLS
@@ -475,7 +504,9 @@ void idGameLocal::Init( void ) {
 // RAVEN END
 	// register game specific decl types
 	declManager->RegisterDeclType( "model",				DECL_MODELDEF,		idDeclAllocator<idDeclModelDef> );
-	declManager->RegisterDeclType( "export",			DECL_MODELEXPORT,	idDeclAllocator<idDecl> );
+	if ( declManager->GetDeclTypeFromName( "export" ) == DECL_MAX_TYPES ) {
+		declManager->RegisterDeclType( "export",		DECL_MODELEXPORT,	idDeclAllocator<idDecl> );
+	}
 
 // RAVEN BEGIN
 // rjohnson: camera is now contained in a def for frame commands
@@ -484,11 +515,11 @@ void idGameLocal::Init( void ) {
 	// register game specific decl folders
 // RAVEN BEGIN
 #ifndef RV_SINGLE_DECL_FILE
-	declManager->RegisterDeclFolderWrapper( "def",			".def",			DECL_ENTITYDEF );
+	declManager->RegisterDeclFolder( "def",			".def",			DECL_ENTITYDEF );
 // bdube: not used in quake 4
 //	declManager->RegisterDeclFolder( "fx",					".fx",			DECL_FX );
 //	declManager->RegisterDeclFolder( "particles",			".prt",			DECL_PARTICLE );
-	declManager->RegisterDeclFolderWrapper( "af",			".af",			DECL_AF );
+	declManager->RegisterDeclFolder( "af",			".af",			DECL_AF );
 //	declManager->RegisterDeclFolderWrapper( "newpdas",		".pda",			DECL_PDA );
 #else
 	if(!cvarSystem->GetCVarBool("com_SingleDeclFile"))
@@ -547,6 +578,28 @@ void idGameLocal::Init( void ) {
 
 	gamestate = GAMESTATE_NOMAP;
 
+// jmarshall
+	InitGameRenderSystem();
+// jmarshall end
+
+// jmarshall
+	// 	   
+	// load in the bot itemtable.
+	botItemTable = FindEntityDef("bot_itemtable", false);
+	if (botItemTable == NULL)
+	{
+		common->Warning("bot_itemtable decl not found. Bot support disabled.\n");
+	}
+	else
+	{
+		// init all the bot systems.
+		botCharacterStatsManager.Init();
+		botFuzzyWeightManager.Init();
+		botWeaponInfoManager.Init();
+		botGoalManager.BotSetupGoalAI();
+	}
+// jmarshall end
+
 	Printf( "...%d aas types\n", aasList.Num() );
 	Printf( "game initialized.\n" );
 	Printf( "---------------------------------------------\n" );
@@ -604,6 +657,16 @@ void idGameLocal::Shutdown( void ) {
 		return;
 	}
 
+	// Fatal startup failures can call Shutdown() before Init() reached GAMESTATE_NOMAP.
+	if ( gamestate == GAMESTATE_UNINITIALIZED ) {
+		if ( animationLib != NULL ) {
+			animationLib->Shutdown();
+			delete animationLib;
+			animationLib = NULL;
+		}
+		return;
+	}
+
 // RAVEN BEGIN
 // jscott: FAS
 	FAS_Shutdown();
@@ -617,6 +680,7 @@ void idGameLocal::Shutdown( void ) {
 	networkSystem->RemoveSortFunction( filterByMod );
 
 	mpGame.Shutdown();
+	ShutdownGameRenderSystem();
 
 	MapShutdown();
 
@@ -676,11 +740,8 @@ void idGameLocal::Shutdown( void ) {
 	// free memory allocated by class objects
 	Clear();
 
-	// shut down the animation manager
-// RAVEN BEGIN
-// jsinger: animationLib changed to a pointer
-	animationLib->Shutdown();
-// RAVEN END
+	// Defer animationLib shutdown until the next Init() so decl shutdown can safely
+	// drop idAnim references first.
 
 // RAVEN BEGIN
 // rjohnson: entity usage stats
@@ -1110,10 +1171,10 @@ void idGameLocal::Error( const char *fmt, ... ) const {
 
 // RAVEN BEGIN
 // scork: some model errors arrive here during validation which kills the whole process, so let's just warn about them instead...
-	if ( common->DoingDeclValidation() ) {
-		this->Warning( "%s", text );
-		return;
-	}
+	//if ( common->DoingDeclValidation() ) {
+	//	this->Warning( "%s", text );
+	//	return;
+	//}
 // RAVEN END
 
 	thread = idThread::CurrentThread();
@@ -1270,7 +1331,6 @@ void idGameLocal::SetServerInfo( const idDict &_serverInfo ) {
 	}
 
 	serverInfo = _serverInfo;
-
 	if ( timeLimitChanged ) {
 		mpGame.ClearAnnouncerSounds( );
 		mpGame.ScheduleTimeAnnouncements( );
@@ -1316,7 +1376,9 @@ void idGameLocal::LoadMap( const char *mapName, int randseed ) {
 			delete mapFile;
 		}
 		mapFile = new idMapFile;
-		if ( !mapFile->Parse( idStr( mapName ) + ".map" ) ) {
+		idStr mapFilePath = mapName;
+		mapFilePath.SetFileExtension( "map" );
+		if ( !mapFile->Parse( mapFilePath ) ) {
 			delete mapFile;
 			mapFile = NULL;
 			Error( "Couldn't load %s", mapName );
@@ -1905,10 +1967,11 @@ void idGameLocal::InitFromNewMap( const char *mapName, idRenderWorld *renderWorl
 	this->isListenServer = isServer && !cvarSystem->GetCVarBool( "net_serverDedicated" );
 // RAVEN END
 	this->isMultiplayer = isServer || isClient;
-
-	if ( this->isMultiplayer )
-		gameLocal.Error( "This mod is for singleplayer only" );
-
+	mpInteractionsGenerated = false;
+// jmarshall
+	//if ( this->isMultiplayer )
+	//	gameLocal.Error( "This mod is for singleplayer only" );
+// jmarshall end
 	PACIFIER_UPDATE;
 
 //RAVEN BEGIN
@@ -1975,7 +2038,42 @@ void idGameLocal::InitFromNewMap( const char *mapName, idRenderWorld *renderWorl
 	animationLib->FlushUnusedAnims();
 // RAVEN END
 
+// jmarshall
+	if (botItemTable && gameLocal.IsMultiplayer() && gameLocal.isServer)
+	{
+		botGoalManager.InitLevelItems();
+	}
+// jmarshall end
+
+
 	gamestate = GAMESTATE_ACTIVE;
+	autoScreenshotStartTime = Sys_Milliseconds();
+	const bool gAutoScreenshot = g_autoScreenshot.GetBool();
+	const bool gAutoScreenshotCvar = cvarSystem->GetCVarBool( "g_autoScreenshot" );
+	autoScreenshotPending = gAutoScreenshot || gAutoScreenshotCvar;
+	const bool comAutoScreenshot = cvarSystem->GetCVarBool( "com_autoScreenshot" );
+	if ( comAutoScreenshot ) {
+		autoScreenshotPending = true;
+	}
+	if ( developer.GetBool() ) {
+		Printf( "AutoScreenshot g_cvar=%d g_sys=%d com_autoScreenshot=%d\n",
+			gAutoScreenshot ? 1 : 0,
+			gAutoScreenshotCvar ? 1 : 0,
+			comAutoScreenshot ? 1 : 0 );
+	}
+	if ( autoScreenshotPending ) {
+		Printf( "AutoScreenshot: armed (delay %d ms)\n", g_autoScreenshotDelayMs.GetInteger() );
+	}
+
+	autoMachinegunImpactStartTime = autoScreenshotStartTime;
+	const bool autoMachinegunImpact = g_autoMachinegunImpact.GetBool();
+	const bool autoMachinegunImpactCvar = cvarSystem->GetCVarBool( "g_autoMachinegunImpact" );
+	autoMachinegunImpactPending = autoMachinegunImpact || autoMachinegunImpactCvar;
+	if ( autoMachinegunImpactPending ) {
+		Printf( "AutoMachinegunImpact: armed (delay %d ms, distance %.1f)\n",
+			g_autoMachinegunImpactDelayMs.GetInteger(),
+			g_autoMachinegunImpactDistance.GetFloat() );
+	}
 
 	Printf( "---------------------------------------------\n" );
 }
@@ -1992,6 +2090,7 @@ bool idGameLocal::InitFromSaveGame( const char *mapName, idRenderWorld *renderWo
 	int num;
 	idEntity *ent;
 	idDict si;
+	mpInteractionsGenerated = false;
 
 	if ( mapFileName.Length() ) {
 		MapShutdown();
@@ -2034,7 +2133,7 @@ bool idGameLocal::InitFromSaveGame( const char *mapName, idRenderWorld *renderWo
 		if ( !InhibitEntitySpawn( mapEnt->epairs ) ) {
 			CacheDictionaryMedia( &mapEnt->epairs );
 			const char *classname = mapEnt->epairs.GetString( "classname" );
-			if ( classname != '\0' ) {
+			if ( classname[0] != '\0' ) {
 				FindEntityDef( classname, false );
 			}
 		}
@@ -2448,12 +2547,12 @@ void idGameLocal::MapShutdown( void ) {
 	gamestate = GAMESTATE_SHUTDOWN;
 
 	if ( soundSystem ) {
-		soundSystem->ResetListener();
+	//	soundSystem->ResetListener();
 	}
 
 // RAVEN BEGIN
 // rjohnson: new blur special effect
-	renderSystem->ShutdownSpecialEffects();
+	//renderSystem->ShutdownSpecialEffects();
 // RAVEN END
 
 	// clear out camera if we're in a cinematic
@@ -2508,6 +2607,7 @@ void idGameLocal::MapShutdown( void ) {
 	mapFileName.Clear();
 
 	gameRenderWorld = NULL;
+	mpInteractionsGenerated = false;
 
 	gamestate = GAMESTATE_NOMAP;
 
@@ -2652,7 +2752,7 @@ void idGameLocal::GetShakeSounds( const idDict *dict ) {
 	idStr soundName;
 
 	soundShaderName = dict->GetString( "s_shader" );
-	if ( soundShaderName != '\0' && dict->GetFloat( "s_shakes" ) != 0.0f ) {
+	if ( soundShaderName[0] != '\0' && dict->GetFloat( "s_shakes" ) != 0.0f ) {
 		soundShader = declManager->FindSound( soundShaderName );
 
 		for ( int i = 0; i < soundShader->GetNumSounds(); i++ ) {
@@ -2717,7 +2817,10 @@ void idGameLocal::CacheDictionaryMedia( const idDict *dict ) {
 				// precache the render model
 				renderModelManager->FindModel( kv->GetValue() );
 				// precache .cm files only
-				collisionModelManager->PreCacheModel( GetMapName(), kv->GetValue() );
+// jmarshall: caching code is different in the legacy engine
+				//collisionModelManager->PreCacheModel( GetMapName(), kv->GetValue() );
+				collisionModelManager->LoadModel(GetMapName(), kv->GetValue(), true);
+// jmarshall end
 			}
 		} else if ( MATCH( "s_shader" ) ) {
 			
@@ -2904,7 +3007,9 @@ void idGameLocal::InitScriptForMap( void ) {
 idGameLocal::SpawnPlayer
 ============
 */
-void idGameLocal::SpawnPlayer( int clientNum ) {
+// jmarshall - bot support
+void idGameLocal::SpawnPlayer(int clientNum, bool isBot, const char* botName) {
+// jmarshall end
 
 	TIME_THIS_SCOPE( __FUNCLINE__);
 
@@ -2922,7 +3027,31 @@ void idGameLocal::SpawnPlayer( int clientNum ) {
 	args.Set( "name", va( "player%d", clientNum + 1 ) );
 // RAVEN BEGIN
 // bdube: changed marine class
-	args.Set( "classname", idPlayer::GetSpawnClassname() );
+// jmarshall: bot support
+	if (gameLocal.IsMultiplayer())
+	{
+// jmarshall
+		if (isBot)
+		{
+			args.Set("classname", va("%s_bot", idPlayer::GetSpawnClassname()));
+			args.Set("botname", botName);
+		}
+		else
+		{
+			args.Set("classname", idPlayer::GetSpawnClassname());
+		}
+// jmarshall end
+	}
+	else
+	{
+// jmarshall - bot support
+		if (isBot)
+		{
+			gameLocal.Error("Bots not supported in singleplayer games!\n");
+		}
+// jmarshall end
+		args.Set("classname", idPlayer::GetSpawnClassname());
+	}
 // RAVEN END
 	
 	// This takes a really long time.
@@ -3130,37 +3259,40 @@ bool idGameLocal::SetupPortalSkyPVS( idPlayer *player ) {
 
 		return( false );
 	}
-
+// jmarshall - this was a nice optimization but not needed
 	// Allocate room for the area flags
-	numAreas = gameRenderWorld->NumAreas();
-	visibleAreas = ( bool * )_alloca( numAreas );
-	memset( visibleAreas, 0, numAreas );
+	//numAreas = gameRenderWorld->NumAreas();
+	//visibleAreas = ( bool * )_alloca( numAreas );
+	//memset( visibleAreas, 0, numAreas );
+	//
+	//// Grab the areas the player can see....
+	//count = player->GetNumPVSAreas();
+	//areaNums = player->GetPVSAreas();
+	//for( i = 0; i < count; i++ ) {
+	//
+	//	// Work out the referenced areas
+	//	gameRenderWorld->FindVisibleAreas( player->GetPhysics()->GetOrigin(), areaNums[i], visibleAreas );
+	//}
+	//
+	//// Do any of the visible areas have a skybox?
+	//for( i = 0; i < numAreas; i++ ) {
+	//
+	//	if( !visibleAreas[i] ) {
+	//
+	//		continue;
+	//	}
+	//
+	//	if( gameRenderWorld->HasSkybox( i ) ) {
+	//
+	//		break;
+	//	}
+	//}
+	//
+	//// .. if any one has a skybox component, then merge in the portal sky
+	//return ( i != numAreas );
 
-	// Grab the areas the player can see....
-	count = player->GetNumPVSAreas();
-	areaNums = player->GetPVSAreas();
-	for( i = 0; i < count; i++ ) {
-
-		// Work out the referenced areas
-		gameRenderWorld->FindVisibleAreas( player->GetPhysics()->GetOrigin(), areaNums[i], visibleAreas );
-	}
-
-	// Do any of the visible areas have a skybox?
-	for( i = 0; i < numAreas; i++ ) {
-
-		if( !visibleAreas[i] ) {
-
-			continue;
-		}
-
-		if( gameRenderWorld->HasSkybox( i ) ) {
-
-			break;
-		}
-	}
-
-	// .. if any one has a skybox component, then merge in the portal sky
-	return ( i != numAreas );
+	return true;
+// jmarshall end
 }
 // RAVEN END
 
@@ -3470,6 +3602,10 @@ idGameLocal::RunFrame
 
 	assert( !isClient );
 
+	if (gameRenderWorld) {
+		gameRenderWorld->DebugClear(0);
+	}
+
 	player = GetLocalPlayer();
 
 	if ( !isMultiplayer && g_stopTime.GetBool() ) {
@@ -3518,10 +3654,10 @@ TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 		}
 
 		// If modview is running then let it think
-		common->ModViewThink( );	
+		//common->ModViewThink( );	
 
 		// rjohnson: added option for guis to always think
-		common->RunAlwaysThinkGUIs( time );
+		//common->RunAlwaysThinkGUIs( time );
 
 		// nmckenzie: Let AI System stuff update itself.
 		if ( !isMultiplayer ) {
@@ -3677,11 +3813,20 @@ TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 		if ( isLastPredictFrame ) {
 			// jscott: effect system uses gravity and the player PVS
 			bse->EndFrame();
+			CheckAutoMachinegunImpact();
 		}
 
 		// do multiplayer related stuff
 		if ( isMultiplayer ) {
 			mpGame.Run();
+		}
+
+		if ( gameRenderWorld && !mpInteractionsGenerated ) {
+			if ( developer.GetBool() ) {
+				common->Printf( "Deferred GenerateAllInteractions (RunFrame)\n" );
+			}
+			gameRenderWorld->GenerateAllInteractions();
+			mpInteractionsGenerated = true;
 		}
 
 		// free the player pvs
@@ -3741,7 +3886,7 @@ TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 
 	ret.syncNextGameFrame = skipCinematic;
 	if ( skipCinematic ) {
-		soundSystem->EndCinematic();
+		//soundSystem->EndCinematic();
 		soundSystem->SetMute( false );
 		skipCinematic = false;		
 	}
@@ -3766,39 +3911,6 @@ TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 
 /*
 ====================
-idGameLocal::GetScreenAspectRatio
-====================
-*/
-float idGameLocal::GetScreenAspectRatio( void ) const {
-	int screenWidth = ( renderSystem != NULL ) ? renderSystem->GetScreenWidth() : 0;
-	int screenHeight = ( renderSystem != NULL ) ? renderSystem->GetScreenHeight() : 0;
-
-	if ( screenWidth > 0 && screenHeight > 0 ) {
-		return ( float )screenWidth / ( float )screenHeight;
-	}
-
-	if ( cvarSystem != NULL ) {
-		screenWidth = cvarSystem->GetCVarInteger( "r_customWidth" );
-		screenHeight = cvarSystem->GetCVarInteger( "r_customHeight" );
-		if ( screenWidth > 0 && screenHeight > 0 ) {
-			return ( float )screenWidth / ( float )screenHeight;
-		}
-
-		switch ( cvarSystem->GetCVarInteger( "r_aspectRatio" ) ) {
-		case 1:
-			return 16.0f / 9.0f;
-		case 2:
-			return 16.0f / 10.0f;
-		default:
-			break;
-		}
-	}
-
-	return 4.0f / 3.0f;
-}
-
-/*
-====================
 idGameLocal::CalcFov
 
 Calculates the horizontal and vertical field of view based on a horizontal field of view and custom aspect ratio
@@ -3807,56 +3919,42 @@ Calculates the horizontal and vertical field of view based on a horizontal field
 void idGameLocal::CalcFov( float base_fov, float &fov_x, float &fov_y ) const {
 	float	x;
 	float	y;
-	const float referenceAspect = 4.0f / 3.0f;
-	const float aspectRatio = idMath::ClampFloat( 0.1f, 10.0f, GetScreenAspectRatio() );
-	
-	if ( !sys->FPU_StackIsEmpty() ) {
-		Printf( sys->FPU_GetState() );
-		Error( "idGameLocal::CalcFov: FPU stack not empty" );
-	}
+	float	ratio_x = 4.0f;
+	float	ratio_y = 3.0f;
 
-// RAVEN BEGIN
-// jnewquist: Option to adjust vertical fov instead of horizontal for non 4:3 modes
-	if ( g_fixedHorizFOV.GetBool() ) {
-		x = aspectRatio / idMath::Tan( base_fov / 360.0f * idMath::PI );
-		y = idMath::ATan( 1.0f, x );
-		fov_y = y * 360.0f / idMath::PI;
-		fov_x = base_fov;
-		return;
-	}
-// RAVEN END
-
-	// first, calculate the vertical fov from the legacy 4:3 baseline.
-	x = referenceAspect / idMath::Tan( base_fov / 360.0f * idMath::PI );
-	y = idMath::ATan( 1.0f, x );
+	// first, calculate the vertical fov based on a 640x480 view
+	x = SCREEN_WIDTH / tan(base_fov / 360.0f * idMath::PI);
+	y = atan2(SCREEN_HEIGHT, x);
 	fov_y = y * 360.0f / idMath::PI;
 
 	// FIXME: somehow, this is happening occasionally
-	assert( fov_y > 0 );
-	if ( fov_y <= 0 ) {
-		Printf( sys->FPU_GetState() );
-		Error( "idGameLocal::CalcFov: bad result" );
+	assert(fov_y > 0);
+	if (fov_y <= 0) {
+		Printf(sys->FPU_GetState());
+		Error("idGameLocal::CalcFov: bad result");
+	}
+	// Aspect ratio is always automatic and follows the current render size.
+	const int screenWidth = renderSystem->GetScreenWidth();
+	const int screenHeight = renderSystem->GetScreenHeight();
+	if ( screenWidth > 0 && screenHeight > 0 ) {
+		ratio_x = static_cast<float>( screenWidth );
+		ratio_y = static_cast<float>( screenHeight );
 	}
 
-	if ( idMath::Fabs( aspectRatio - referenceAspect ) < 0.001f ) {
-		fov_x = base_fov;
-		return;
-	}
+	y = ratio_y / tan(fov_y / 360.0f * idMath::PI);
+	fov_x = atan2(ratio_x, y) * 360.0f / idMath::PI;
 
-	y = 1.0f / idMath::Tan( fov_y / 360.0f * idMath::PI );
-	fov_x = idMath::ATan( aspectRatio, y ) * 360.0f / idMath::PI;
-
-	if ( fov_x < base_fov ) {
+	if (fov_x < base_fov) {
 		fov_x = base_fov;
-		x = aspectRatio / idMath::Tan( fov_x / 360.0f * idMath::PI );
-		fov_y = idMath::ATan( 1.0f, x ) * 360.0f / idMath::PI;
+		x = ratio_x / tan(fov_x / 360.0f * idMath::PI);
+		fov_y = atan2(ratio_y, x) * 360.0f / idMath::PI;
 	}
 
 	// FIXME: somehow, this is happening occasionally
-	assert( ( fov_x > 0 ) && ( fov_y > 0 ) );
-	if ( ( fov_y <= 0 ) || ( fov_x <= 0 ) ) {
-		Printf( sys->FPU_GetState() );
-		Error( "idGameLocal::CalcFov: bad result" );
+	assert((fov_x > 0) && (fov_y > 0));
+	if ((fov_y <= 0) || (fov_x <= 0)) {
+		Printf(sys->FPU_GetState());
+		Error("idGameLocal::CalcFov: bad result");
 	}
 }
 
@@ -3902,8 +4000,192 @@ bool idGameLocal::Draw( int clientNum ) {
 // bdube: debugging HUD
 	gameDebug.DrawHud( );
 // RAVEN END
-
+	CheckAutoScreenshot();
 	return true;
+}
+
+/*
+================
+idGameLocal::CheckAutoMachinegunImpact
+
+Take a one-shot machinegun impact effect sample after map load, for deterministic BSE visual debugging.
+================
+*/
+void idGameLocal::CheckAutoMachinegunImpact( void ) {
+	const bool autoMachinegunImpact = g_autoMachinegunImpact.GetBool();
+	const bool autoMachinegunImpactCvar = cvarSystem->GetCVarBool( "g_autoMachinegunImpact" );
+	const bool wantAutoMachinegunImpact = autoMachinegunImpact || autoMachinegunImpactCvar;
+
+	if ( wantAutoMachinegunImpact ) {
+		if ( !autoMachinegunImpactPending ) {
+			autoMachinegunImpactPending = true;
+			autoMachinegunImpactStartTime = Sys_Milliseconds();
+		}
+	} else if ( autoMachinegunImpactPending ) {
+		autoMachinegunImpactPending = false;
+	}
+
+	if ( !autoMachinegunImpactPending ) {
+		return;
+	}
+
+	const int nowMs = Sys_Milliseconds();
+	const int delayMs = g_autoMachinegunImpactDelayMs.GetInteger();
+	if ( delayMs > 0 && ( nowMs - autoMachinegunImpactStartTime ) < delayMs ) {
+		return;
+	}
+
+	idPlayer *player = GetLocalPlayer();
+	if ( !player ) {
+		return;
+	}
+
+	const idDecl *effect = NULL;
+	const char *overrideEffectName = g_autoMachinegunImpactEffect.GetString();
+	if ( overrideEffectName && *overrideEffectName ) {
+		effect = ( const idDecl * )declManager->FindEffect( overrideEffectName, false );
+	}
+
+	idStr hitscanDefName;
+	const idDeclEntityDef *weaponDef = FindEntityDef( "weapon_machinegun", false );
+	if ( weaponDef ) {
+		hitscanDefName = weaponDef->dict.GetString( "def_hitscan" );
+	}
+	const idDeclEntityDef *hitscanDef = ( !hitscanDefName.IsEmpty() ) ? FindEntityDef( hitscanDefName.c_str(), false ) : NULL;
+	const rvDeclMatType *metalType = declManager->FindMaterialType( "metal", false );
+
+	if ( !effect && hitscanDef ) {
+		effect = GetEffect( hitscanDef->dict, "fx_impact", metalType );
+		if ( !effect ) {
+			effect = GetEffect( hitscanDef->dict, "fx_impact", NULL );
+		}
+	}
+	if ( !effect && weaponDef ) {
+		effect = GetEffect( weaponDef->dict, "fx_impact", metalType );
+		if ( !effect ) {
+			effect = GetEffect( weaponDef->dict, "fx_impact", NULL );
+		}
+	}
+
+	idVec3 viewOrigin;
+	idMat3 viewAxis;
+	player->GetViewPos( viewOrigin, viewAxis );
+
+	const float distance = idMath::ClampFloat( 64.0f, 4096.0f, g_autoMachinegunImpactDistance.GetFloat() );
+	const idVec3 traceEnd = viewOrigin + viewAxis[ 0 ] * distance;
+
+	trace_t tr;
+	TracePoint( player, tr, viewOrigin, traceEnd, MASK_SHOT_RENDERMODEL | CONTENTS_WATER | CONTENTS_PROJECTILE, player );
+
+	const idVec3 impactPos = ( tr.fraction < 1.0f ) ? tr.c.point : tr.endpos;
+	const idMat3 impactAxis = ( tr.fraction < 1.0f ) ? tr.c.normal.ToMat3() : viewAxis;
+
+	if ( effect ) {
+		PlayEffect( effect, impactPos, impactAxis, false, traceEnd, false, false, EC_IMPACT );
+		common->Printf( "AutoMachinegunImpact: played '%s' frac=%.3f pos=(%.1f %.1f %.1f) elapsed=%dms\n",
+			effect->GetName(),
+			tr.fraction,
+			impactPos.x, impactPos.y, impactPos.z,
+			nowMs - autoMachinegunImpactStartTime );
+	} else {
+		common->Printf( "AutoMachinegunImpact: unable to resolve machinegun fx_impact (def_hitscan='%s', override='%s')\n",
+			hitscanDefName.c_str(),
+			overrideEffectName ? overrideEffectName : "" );
+	}
+
+	autoMachinegunImpactPending = false;
+	g_autoMachinegunImpact.SetBool( false );
+	cvarSystem->SetCVarBool( "g_autoMachinegunImpact", false );
+}
+
+/*
+================
+idGameLocal::CheckAutoScreenshot
+
+Take a one-shot screenshot after map load, for automated diagnostics.
+================
+*/
+void idGameLocal::CheckAutoScreenshot( void ) {
+	const bool gAutoScreenshot = g_autoScreenshot.GetBool();
+	const bool gAutoScreenshotCvar = cvarSystem->GetCVarBool( "g_autoScreenshot" );
+	const bool comAutoScreenshot = cvarSystem->GetCVarBool( "com_autoScreenshot" );
+	const bool wantAutoScreenshot = gAutoScreenshot || gAutoScreenshotCvar || comAutoScreenshot;
+
+	if ( wantAutoScreenshot ) {
+		if ( !autoScreenshotPending ) {
+			autoScreenshotPending = true;
+			autoScreenshotStartTime = Sys_Milliseconds();
+		}
+	} else if ( autoScreenshotPending ) {
+		autoScreenshotPending = false;
+	}
+
+	if ( !autoScreenshotPending ) {
+		return;
+	}
+
+	const int nowMs = Sys_Milliseconds();
+	const int delayMs = g_autoScreenshotDelayMs.GetInteger();
+	if ( delayMs > 0 && ( nowMs - autoScreenshotStartTime ) < delayMs ) {
+		return;
+	}
+
+	idStr shotName;
+	shotName = va( "screenshots/auto_%d.tga", nowMs );
+	// Log basic render diagnostics before capture.
+	int numLights = 0;
+	int numLightDefs = 0;
+	int numAmbientLights = 0;
+	for ( int i = 0; i < MAX_GENTITIES; ++i ) {
+		idEntity *ent = entities[ i ];
+		if ( !ent ) {
+			continue;
+		}
+		if ( ent->IsType( idLight::Type ) ) {
+			idLight *light = static_cast<idLight *>( ent );
+			numLights++;
+			if ( light->GetLightDefHandle() != -1 ) {
+				numLightDefs++;
+			}
+			if ( light->IsAmbient() ) {
+				numAmbientLights++;
+			}
+		}
+	}
+	common->Printf( "AutoScreenshot: lights total=%d defs=%d ambient=%d r_skipRender=%d r_skipInteractions=%d r_skipAmbient=%d r_skipDiffuse=%d r_forceAmbient=%d\n",
+		numLights, numLightDefs, numAmbientLights,
+		cvarSystem->GetCVarBool( "r_skipRender" ) ? 1 : 0,
+		cvarSystem->GetCVarBool( "r_skipInteractions" ) ? 1 : 0,
+		cvarSystem->GetCVarBool( "r_skipAmbient" ) ? 1 : 0,
+		cvarSystem->GetCVarBool( "r_skipDiffuse" ) ? 1 : 0,
+		cvarSystem->GetCVarBool( "r_forceAmbient" ) ? 1 : 0 );
+	if ( developer.GetBool() ) {
+		idPlayer *localPlayer = GetLocalPlayer();
+		const renderView_t *view = localPlayer ? localPlayer->GetRenderView() : NULL;
+		if ( view && gameRenderWorld ) {
+			const int areaNum = gameRenderWorld->PointInArea( view->vieworg );
+			common->Printf( "AutoScreenshot: vieworg=(%.1f %.1f %.1f) area=%d numAreas=%d numPortals=%d\n",
+				view->vieworg.x, view->vieworg.y, view->vieworg.z,
+				areaNum,
+				gameRenderWorld->NumAreas(),
+				gameRenderWorld->NumPortals() );
+		} else {
+			common->Printf( "AutoScreenshot: vieworg unavailable (player=%p view=%p renderWorld=%p)\n",
+				localPlayer, view, gameRenderWorld );
+		}
+		cmdSystem->BufferCommandText( CMD_EXEC_APPEND, "listRenderLightDefs\nlistRenderEntityDefs\n" );
+	}
+
+	renderSystem->CaptureRenderToFile( shotName.c_str(), true );
+	common->Printf( "AutoScreenshot: wrote %s at %d ms\n", shotName.c_str(), nowMs - autoScreenshotStartTime );
+	if ( g_autoScreenshotQuit.GetBool() ) {
+		cmdSystem->BufferCommandText( CMD_EXEC_APPEND, "quit\n" );
+	}
+
+	autoScreenshotPending = false;
+	g_autoScreenshot.SetBool( false );
+	cvarSystem->SetCVarBool( "g_autoScreenshot", false );
+	cvarSystem->SetCVarBool( "com_autoScreenshot", false );
 }
 
 /*
@@ -4409,7 +4691,9 @@ void idGameLocal::RunDebugInfo( void ) {
 	}
 
 	// collision map debug output
-	collisionModelManager->DebugOutput( player->GetEyePosition(), mat3_identity );
+// jmarshall - debug output
+	collisionModelManager->DebugOutput( player->GetEyePosition() );
+// jmarshall end
 
 // RAVEN BEGIN
 // jscott: for debugging playbacks
@@ -4571,7 +4855,7 @@ idGameLocal::CheatsOk
 bool idGameLocal::CheatsOk( bool requirePlayer ) {
 	idPlayer *player;
 
-	if ( isMultiplayer && !cvarSystem->GetCVarBool( "net_allowCheats" ) ) {
+	if ( isMultiplayer && !( cvarSystem->GetCVarBool( "sv_cheats" ) || cvarSystem->GetCVarBool( "net_allowCheats" ) ) ) {
 		Printf( "Not allowed in multiplayer.\n" );
 		return false;
 	}
@@ -4804,6 +5088,7 @@ bool idGameLocal::SpawnEntityDef( const idDict &args, idEntity **ent, bool setDe
 	idClass		*obj;
 	idStr		error;
 	const char  *name;
+	static int	s_lightSpawnDefLogCount = 0;
 
 	TIME_THIS_SCOPE( __FUNCLINE__);
 	
@@ -4825,6 +5110,7 @@ bool idGameLocal::SpawnEntityDef( const idDict &args, idEntity **ent, bool setDe
 // RAVEN END
 	}
 	spawnArgs.GetString( "classname", NULL, &classname );
+	const bool isLight = ( classname && !idStr::Icmpn( classname, "light", 5 ) );
 
 	const idDeclEntityDef *def = FindEntityDef( classname, false );
 	if ( !def ) {
@@ -4834,10 +5120,18 @@ bool idGameLocal::SpawnEntityDef( const idDict &args, idEntity **ent, bool setDe
 			Warning( "Unknown classname '%s'%s.", classname, error.c_str() );
 		}
 // RAVEN END
+		if ( isLight && s_lightSpawnDefLogCount < 32 ) {
+			common->Printf( "LightSpawnEntityDef: name='%s' classname='%s' def=missing\n", name ? name : "", classname ? classname : "<null>" );
+			++s_lightSpawnDefLogCount;
+		}
 		return false;
 	}
 
 	spawnArgs.SetDefaults( &def->dict );
+	if ( isLight && s_lightSpawnDefLogCount < 32 ) {
+		common->Printf( "LightSpawnEntityDef: name='%s' classname='%s' def=ok\n", name ? name : "", classname ? classname : "<null>" );
+		++s_lightSpawnDefLogCount;
+	}
 
 // RAVEN BEGIN
 // rjohnson: entity usage stats
@@ -4876,6 +5170,10 @@ bool idGameLocal::SpawnEntityDef( const idDict &args, idEntity **ent, bool setDe
 	// check if we should spawn a class object
 	spawnArgs.GetString( "spawnclass", NULL, &spawn );
 	if ( spawn ) {
+		if ( isLight && s_lightSpawnDefLogCount < 32 ) {
+			common->Printf( "LightSpawnEntityDef: name='%s' spawnclass='%s'\n", name ? name : "", spawn );
+			++s_lightSpawnDefLogCount;
+		}
 
 		cls = idClass::GetClass( spawn );
 		if ( !cls ) {
@@ -4904,6 +5202,10 @@ bool idGameLocal::SpawnEntityDef( const idDict &args, idEntity **ent, bool setDe
 	// check if we should call a script function to spawn
 	spawnArgs.GetString( "spawnfunc", NULL, &spawn );
 	if ( spawn ) {
+		if ( isLight && s_lightSpawnDefLogCount < 32 ) {
+			common->Printf( "LightSpawnEntityDef: name='%s' spawnfunc='%s'\n", name ? name : "", spawn );
+			++s_lightSpawnDefLogCount;
+		}
 		const function_t *func = program.FindFunction( spawn );
 		if ( !func ) {
 			Warning( "Could not spawn '%s'.  Script function '%s' not found%s.", classname, spawn, error.c_str() );
@@ -4915,6 +5217,10 @@ bool idGameLocal::SpawnEntityDef( const idDict &args, idEntity **ent, bool setDe
 		return true;
 	}
 
+	if ( isLight && s_lightSpawnDefLogCount < 32 ) {
+		common->Printf( "LightSpawnEntityDef: name='%s' no spawnclass/spawnfunc\n", name ? name : "" );
+		++s_lightSpawnDefLogCount;
+	}
 	Warning( "%s doesn't include a spawnfunc or spawnclass%s.", classname, error.c_str() );
 	return false;
 }
@@ -4984,15 +5290,31 @@ idGameLocal::InhibitEntitySpawn
 bool idGameLocal::InhibitEntitySpawn( idDict &spawnArgs ) {
 	
 	bool result = false;
+	static int	s_lightInhibitLogCount = 0;
+	const char *entClassname = spawnArgs.GetString( "classname" );
+	const bool isLight = ( entClassname && !idStr::Icmpn( entClassname, "light", 5 ) );
+	const char *lightReason = NULL;
 
 	if ( isMultiplayer ) {
 		spawnArgs.GetBool( "not_multiplayer", "0", result );
+		if ( result ) {
+			lightReason = "not_multiplayer";
+		}
 	} else if ( g_skill.GetInteger() == 0 ) {
 		spawnArgs.GetBool( "not_easy", "0", result );
+		if ( result ) {
+			lightReason = "not_easy";
+		}
 	} else if ( g_skill.GetInteger() == 1 ) {
 		spawnArgs.GetBool( "not_medium", "0", result );
+		if ( result ) {
+			lightReason = "not_medium";
+		}
 	} else {
 		spawnArgs.GetBool( "not_hard", "0", result );
+		if ( result ) {
+			lightReason = "not_hard";
+		}
 	}
 
 	const char *name;
@@ -5010,6 +5332,10 @@ bool idGameLocal::InhibitEntitySpawn( idDict &spawnArgs ) {
 	const char* entityFilter;
 	if ( serverInfo.GetString( "si_entityFilter", "", &entityFilter ) && *entityFilter ) {
 		if ( spawnArgs.MatchPrefix ( "filter_" ) && !spawnArgs.GetBool ( va("filter_%s", entityFilter) ) ) {
+			if ( isLight && s_lightInhibitLogCount < 32 ) {
+				common->Printf( "LightInhibit: reason=filter_%s\n", entityFilter );
+				++s_lightInhibitLogCount;
+			}
 			return true;
 		}
 	}
@@ -5019,6 +5345,10 @@ bool idGameLocal::InhibitEntitySpawn( idDict &spawnArgs ) {
 // squirrel: suppress ents that aren't supported in Buying modes (if that's the mode we're in)
 	if ( mpGame.IsBuyingAllowedInTheCurrentGameMode() ) {
 		if ( spawnArgs.GetBool( "disableSpawnInBuying", "0" ) ) {
+			if ( isLight && s_lightInhibitLogCount < 32 ) {
+				common->Printf( "LightInhibit: reason=disableSpawnInBuying\n" );
+				++s_lightInhibitLogCount;
+			}
 			return true;
 		}
 
@@ -5029,6 +5359,10 @@ bool idGameLocal::InhibitEntitySpawn( idDict &spawnArgs ) {
 			idStr::FindText( classname, "ammo_" ) == 0 ||
 			idStr::FindText( classname, "item_armor_large" ) == 0 )
 		{
+			if ( isLight && s_lightInhibitLogCount < 32 ) {
+				common->Printf( "LightInhibit: reason=buyingModeSuppression\n" );
+				++s_lightInhibitLogCount;
+			}
 			return true;
 		}
 	}
@@ -5041,6 +5375,10 @@ bool idGameLocal::InhibitEntitySpawn( idDict &spawnArgs ) {
 		}
 	}
 
+	if ( isLight && s_lightInhibitLogCount < 32 ) {
+		common->Printf( "LightInhibit: result=%d reason=%s\n", result ? 1 : 0, lightReason ? lightReason : ( result ? "other" : "none" ) );
+		++s_lightInhibitLogCount;
+	}
 	return result;
 }
 
@@ -5554,14 +5892,14 @@ void idGameLocal::KillBox( idEntity *ent, bool catch_teleport ) {
 idGameLocal::RequirementMet
 ================
 */
-bool idGameLocal::RequirementMet( idEntity *activator, const idStr &requires, int removeItem ) {
-	if ( requires.Length() ) {
+bool idGameLocal::RequirementMet( idEntity *activator, const idStr &requirement, int removeItem ) {
+	if ( requirement.Length() ) {
 // RAVEN BEGIN
 // jnewquist: Use accessor for static class type 
 		if ( activator->IsType( idPlayer::GetClassType() ) ) {
 // RAVEN END
 			idPlayer *player = static_cast<idPlayer *>(activator);
-			idDict *item = player->FindInventoryItem( requires );
+			idDict *item = player->FindInventoryItem( requirement );
 			if ( item ) {
 				if ( removeItem ) {
 					player->RemoveInventoryItem( item );
@@ -5591,6 +5929,39 @@ bool idGameLocal::IsWeaponsStayOn( void ) {
 	return serverInfo.GetBool( "si_weaponStay" );
 }
 
+/*
+===================
+idGameLocal::AlertBots
+===================
+*/
+// jmarshall
+void idGameLocal::AlertBots(idPlayer* player, idVec3 alert_position)
+{
+	for (int i = 0; i < MAX_CLIENTS; i++)
+	{
+		rvmBot* bot = NULL;
+
+		if (entities[i] == NULL)
+		{
+			continue;
+		}
+
+		bot = entities[i]->Cast<rvmBot>();
+		if (bot == NULL)
+		{
+			continue;
+		}
+
+		trace_t tr;
+		Trace(tr, alert_position, bot->GetRenderEntity()->origin, CONTENTS_SOLID, 0);
+
+		if (tr.fraction == 1.0f)
+		{
+			bot->SetEnemy(player, player->GetOrigin());
+		}
+	}
+}
+// jmarshall end
 
 /*
 ============
@@ -5601,6 +5972,19 @@ void idGameLocal::AlertAI( idEntity *ent ) {
 // RAVEN BEGIN
 // bdube: merged
 	if ( ent ) {
+// jmarshall
+		// Alert any bots near were we just exploded.
+		if (gameLocal.IsMultiplayer() && gameLocal.isServer)
+		{
+			idPlayer* player = ent->Cast<idPlayer>();
+			if (player)
+			{
+				AlertBots(player, ent->GetOrigin());
+			}
+
+		}
+// jmarshall end
+
 // RAVEN BEGIN
 // jnewquist: Use accessor for static class type 
 		if ( ent->IsType( idActor::GetClassType() ) ) {
@@ -6078,7 +6462,7 @@ void idGameLocal::SetCamera( idCamera *cam ) {
 
 	// this should fix going into a cinematic when dead.. rare but happens
 	idPlayer *client = GetLocalPlayer();
-	if ( client->health <= 0 || client->pfl.dead ) {
+	if ( cam && client && ( client->health <= 0 || client->pfl.dead ) ) {
 		return;
 	}
 
@@ -6086,10 +6470,7 @@ void idGameLocal::SetCamera( idCamera *cam ) {
 	if ( camera ) {
 // RAVEN BEGIN
 // bdube: tool support
-		inCinematic = false;
-		if( !( gameLocal.editors & ( EDITOR_MODVIEW | EDITOR_PLAYBACKS ) ) ) {
-			inCinematic = true;
-		}
+		inCinematic = true;
 // RAVEN END
 
 		if ( skipCinematic && camera->spawnArgs.GetBool( "disconnect" ) ) {
@@ -7199,9 +7580,10 @@ idGameLocal::UpdateServerInfoFlags
 // RAVEN BEGIN
 // ddynerman: new gametype strings
 void idGameLocal::SetGameType( void ) {
+	idStr gameTypeName = serverInfo.GetString("si_gameType");
 	gameType = GAME_SP;
 
-	if ( idStr::Icmp( serverInfo.GetString( "si_gameType" ), "singleplayer" ) ) {
+	if ( gameTypeName != "singleplayer") {
 		mpGame.SetGameType();
 	}
 }
@@ -7614,6 +7996,10 @@ idEntity* idGameLocal::HitScan(
 				// twhitaker: additionalIgnore parameter
 				TracePoint( owner, tr, start, end, contents, additionalIgnore );
 			}
+			if (tr.c.materialType) {
+				tr.c.materialType = tr.c.materialType;
+			}
+
 			//gameRenderWorld->DebugArrow( colorRed, start, end, 10, 5000 );
 // RAVEN END
 			
@@ -8412,6 +8798,117 @@ bool idGameLocal::IsTeamPowerups( void ) {
 		return false;
 	}
 	return ( gameType != GAME_ARENA_CTF );
+}
+
+/*
+===============
+idGameLocal::GetRandomBotName
+===============
+*/
+void idGameLocal::GetRandomBotName(int clientNum, idStr& name) {
+	name = "Quake4Bot";
+}
+
+/*
+===============
+idGameLocal::Trace
+===============
+*/
+void idGameLocal::Trace(trace_t& results, const idVec3& start, const idVec3& end, int contentMask, int passEntity)
+{
+	idMat3 axis;
+	axis.Identity();
+
+	if (passEntity == -1)
+	{
+		clip[0]->Translation(results, start, end, NULL, axis, CONTENTS_SOLID, NULL);
+	}
+	else
+	{
+		clip[0]->Translation(results, start, end, NULL, axis, CONTENTS_SOLID, entities[passEntity]);
+	}
+}
+
+
+/*
+================
+idGameLocal::TravelTimeToGoal
+================
+*/
+int idGameLocal::TravelTimeToGoal( const idVec3& origin, const idVec3& goal )
+{
+	idAAS* aas = GetBotAAS();
+
+	if( aas == NULL )
+	{
+		gameLocal.Error( "idGameLocal::TraveTimeToGoal: No AAS loaded...\n" );
+		return NULL;
+	}
+	//int originArea = aas->PointAreaNum(origin);
+	//idVec3 _goal = goal;
+	//int goalArea = aas->AdjustPositionAndGetArea(_goal);
+	//return aas->TravelTimeToGoalArea(originArea, origin, goalArea, TFL_WALK);
+
+	idVec3 org = origin;
+	int curAreaNum = aas->AdjustPositionAndGetArea( org );
+	int goalArea = aas->PointAreaNum( goal );
+	int travelTime;
+	idReachability* reach;
+	if( !aas->RouteToGoalArea( curAreaNum, org, goalArea, TFL_WALK | TFL_AIR, travelTime, &reach ) )
+	{
+		return NULL;
+	}
+
+	//int goalArea = aas->PointAreaNum(goal);
+	//aas->ShowWalkPath(origin, goalArea, goal);
+
+	return travelTime;
+}
+
+/*
+===============
+idGameLocal::GetBotItemEntry
+===============
+*/
+int idGameLocal::GetBotItemEntry( const char* name )
+{
+	if ( !name || !name[0] ) {
+		return 9;
+	}
+	if ( !botItemTable ) {
+		gameLocal.Warning( "GetBotItemEntry: bot_itemtable missing, returning default for %s\n", name );
+		return 9;
+	}
+
+	const idKeyValue* keyvalue = botItemTable->dict.FindKey( name );
+	if( !keyvalue )
+	{
+		gameLocal.Warning( "GetBotItemModelIndex: Doesn't have key %s\n", name );
+		return 9;
+	}
+
+	return botItemTable->dict.GetInt( name );
+}
+
+/*
+======================
+idGameLocal::AddBot
+======================
+*/
+void idGameLocal::AddBot(const char *botName) {
+	int clientNum;
+
+	if (aasList.Num() == 0) {
+		common->Warning("idGameLocal::AddBot: No AAS file loaded for map\n");
+		return;
+	}
+
+	clientNum = networkSystem->AllocateClientSlotForBot(botName,  8);
+	if (clientNum == -1) {
+		return;
+	}
+
+	//	idPlayer* newPlayer = gameLocal.GetClient(clientNum);
 }
 
 // RAVEN BEGIN

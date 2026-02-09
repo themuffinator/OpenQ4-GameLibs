@@ -1,10 +1,10 @@
 // RAVEN BEGIN
-// bdube: note that this file is no longer merged with Doom3 updates
+// bdube: note that this file is no longer merged with legacy engine updates
 //
 // MERGE_DATE 09/30/2004
 
-#include "../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "Game_local.h"
 
@@ -424,6 +424,10 @@ void idItem::Spawn( void ) {
 // mwhitlock: Dynamic memory consolidation
 	RV_PUSH_HEAP_MEM(this);
 // RAVEN END
+
+// jmarshall
+	modelindex = gameLocal.GetBotItemEntry(spawnArgs.GetString("modelindex"));
+// jmarshall end
 
 	physicsObj.SetClipModel( new idClipModel( GetPhysics()->GetClipModel() ), 1.0f );
 

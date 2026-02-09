@@ -302,6 +302,9 @@ extern idCVar	g_brassTime;
 extern idCVar	g_gun_x;
 extern idCVar	g_gun_y;
 extern idCVar	g_gun_z;
+extern idCVar	cl_gun_x;
+extern idCVar	cl_gun_y;
+extern idCVar	cl_gun_z;
 // RAVEN BEGIN
 // bdube: cvar for messing with foreshortening
 extern idCVar	g_gun_pitch;
@@ -328,6 +331,13 @@ extern idCVar	rb_showContacts;
 // RAVEN END
 
 extern idCVar	g_testPostProcess;
+extern idCVar	g_autoScreenshot;
+extern idCVar	g_autoScreenshotDelayMs;
+extern idCVar	g_autoScreenshotQuit;
+extern idCVar	g_autoMachinegunImpact;
+extern idCVar	g_autoMachinegunImpactDelayMs;
+extern idCVar	g_autoMachinegunImpactDistance;
+extern idCVar	g_autoMachinegunImpactEffect;
 
 extern idCVar	g_testModelRotate;
 extern idCVar	g_testModelAnimate;

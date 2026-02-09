@@ -1,10 +1,10 @@
 // RAVEN BEGIN
-// bdube: note that this file is no longer merged with Doom3 updates
+// bdube: note that this file is no longer merged with legacy engine updates
 //
 // MERGE_DATE 09/30/2004
 
-#include "../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "Game_local.h"
 
@@ -1563,9 +1563,9 @@ void idPlayer::Init( void ) {
 	SetupWeaponEntity( );
 	currentWeapon = -1;
 	previousWeapon = -1;
-	
-	flashlightOn	  = false;
-
+// jmarshall - engine pushed IMPULSE_50 to force on the flashlight, makes more sense just to enable it here(since it was on initially). 
+	flashlightOn	  = true;
+// jmarshall end
 	idealLegsYaw = 0.0f;
 	legsYaw = 0.0f;
 	legsForward = true;
@@ -2798,7 +2798,9 @@ void idPlayer::SpawnToPoint( const idVec3 &spawn_origin, const idAngles &spawn_a
 
 	// Force players to use bounding boxes when in multiplayer
 	if ( gameLocal.isMultiplayer ) {
-		use_combat_bbox = true;
+// jmarshall - breaks multiplayer.
+//		use_combat_bbox = true;
+// jmarshall end
 
 		// Make sure the combat model is unlinked
 		if ( combatModel ) {
@@ -3663,7 +3665,7 @@ void idPlayer::DrawHUD( idUserInterface *_hud ) {
 
 	// Draw the cinematic hud when in a cinematic
 	if ( gameLocal.GetCamera( ) ) {
-		if ( cinematicHud && !(gameLocal.editors & EDITOR_MODVIEW) ) {
+		if ( cinematicHud ) {
 			cinematicHud->Redraw( gameLocal.time );
 		}
 		return;
@@ -3815,12 +3817,19 @@ void idPlayer::EnterCinematic( void ) {
 	}
 	
    	// Have the cinematic hud start
-   	if ( cinematicHud ) {	
-   		cinematicHud->Activate ( true, gameLocal.time );
-   		cinematicHud->HandleNamedEvent ( "cinematicStart" );
+	if ( cinematicHud ) {	
+		cinematicHud->Activate ( true, gameLocal.time );
+		cinematicHud->HandleNamedEvent ( "cinematicStart" );
+		cinematicHud->HandleNamedEvent ( "showLetterbox" );
 // RAVEN BEGIN
 // jnewquist: Option to adjust vertical fov instead of horizontal for non 4:3 modes
-		if ( gameLocal.GetScreenAspectRatio() > ( 4.0f / 3.0f ) ) {
+		bool hideLetterbox = false;
+		const int screenWidth = renderSystem->GetScreenWidth();
+		const int screenHeight = renderSystem->GetScreenHeight();
+		if ( screenWidth > 0 && screenHeight > 0 ) {
+			hideLetterbox = ( static_cast<float>( screenWidth ) / static_cast<float>( screenHeight ) ) > ( 4.0f / 3.0f );
+		}
+		if ( hideLetterbox ) {
 			cinematicHud->HandleNamedEvent ( "hideLetterbox" );
 		}
 // RAVEN END
@@ -6684,7 +6693,7 @@ void idPlayer::UpdateFocus( void ) {
 		gameLocal.TracePoint( this, trace, start, end, MASK_SHOT_BOUNDINGBOX, this );
 		// no aim text if player is invisible
  		if ( ( trace.fraction < 1.0f ) && ( trace.c.entityNum < MAX_CLIENTS ) && ( !((idPlayer*)gameLocal.entities[ trace.c.entityNum ])->PowerUpActive( POWERUP_INVISIBILITY ) ) ) {
-			char* teammateHealth = "";
+			const char* teammateHealth = "";
 			idPlayer* p = static_cast<idPlayer*>(gameLocal.entities[ trace.c.entityNum ]);			
 			
 			if( trace.c.entityNum != aimClientNum ) {
@@ -8154,6 +8163,8 @@ GetItemBuyImpulse
 */
 int GetItemBuyImpulse( const char* itemName )
 {
+// jmarshall - multiplayer
+/*
 	struct ItemBuyImpulse
 	{
 		const char*	itemName;
@@ -8200,7 +8211,8 @@ int GetItemBuyImpulse( const char* itemName )
 			return itemBuyImpulseTable[ i ].itemBuyImpulse;
 		}
 	}
-
+*/
+// jmarshall end
 	return 0;
 }
 
@@ -8564,48 +8576,49 @@ void idPlayer::PerformImpulse( int impulse ) {
 			idFuncRadioChatter::RepeatLast();
 			break;
 		}
-
-// RITUAL BEGIN
-// squirrel: Mode-agnostic buymenus
-		case IMPULSE_100:	AttemptToBuyItem( "weapon_shotgun" );				break;
-		case IMPULSE_101:	AttemptToBuyItem( "weapon_machinegun" );			break;
-		case IMPULSE_102:	AttemptToBuyItem( "weapon_hyperblaster" );			break;
-		case IMPULSE_103:	AttemptToBuyItem( "weapon_grenadelauncher" );		break;
-		case IMPULSE_104:	AttemptToBuyItem( "weapon_nailgun" );				break;
-		case IMPULSE_105:	AttemptToBuyItem( "weapon_rocketlauncher" );		break;
-		case IMPULSE_106:	AttemptToBuyItem( "weapon_railgun" );				break;
-		case IMPULSE_107:	AttemptToBuyItem( "weapon_lightninggun" );			break;
-		case IMPULSE_108:	break; // Unused
-		case IMPULSE_109:	AttemptToBuyItem( "weapon_napalmgun" );				break;
-		case IMPULSE_110:	/* AttemptToBuyItem( "weapon_dmg" );*/				break;
-		case IMPULSE_111:	break; // Unused
-		case IMPULSE_112:	break; // Unused
-		case IMPULSE_113:	break; // Unused
-		case IMPULSE_114:	break; // Unused
-		case IMPULSE_115:	break; // Unused
-		case IMPULSE_116:	break; // Unused
-		case IMPULSE_117:	break; // Unused
-		case IMPULSE_118:	AttemptToBuyItem( "item_armor_small" );				break;
-		case IMPULSE_119:	AttemptToBuyItem( "item_armor_large" );				break;
-		case IMPULSE_120:	AttemptToBuyItem( "ammorefill" );					break;
-		case IMPULSE_121:	break; // Unused
-		case IMPULSE_122:	break; // Unused
-		case IMPULSE_123:	AttemptToBuyItem( "ammo_regen" );					break;
-		case IMPULSE_124:	AttemptToBuyItem( "health_regen" );					break;
-		case IMPULSE_125:	AttemptToBuyItem( "damage_boost" );					break;
-		case IMPULSE_126:	break; // Unused
-		case IMPULSE_127:	break; // Unused
-// RITUAL END
-
-		case IMPULSE_50: {
-			ToggleFlashlight ( );
-			break;
-		}
-
- 		case IMPULSE_51: {
- 			LastWeapon();
- 			break;
- 		}
+// jmarshall - buy menu impulse items? Multiplayer only I assume
+//// RITUAL BEGIN
+//// squirrel: Mode-agnostic buymenus
+//		case IMPULSE_100:	AttemptToBuyItem( "weapon_shotgun" );				break;
+//		case IMPULSE_101:	AttemptToBuyItem( "weapon_machinegun" );			break;
+//		case IMPULSE_102:	AttemptToBuyItem( "weapon_hyperblaster" );			break;
+//		case IMPULSE_103:	AttemptToBuyItem( "weapon_grenadelauncher" );		break;
+//		case IMPULSE_104:	AttemptToBuyItem( "weapon_nailgun" );				break;
+//		case IMPULSE_105:	AttemptToBuyItem( "weapon_rocketlauncher" );		break;
+//		case IMPULSE_106:	AttemptToBuyItem( "weapon_railgun" );				break;
+//		case IMPULSE_107:	AttemptToBuyItem( "weapon_lightninggun" );			break;
+//		case IMPULSE_108:	break; // Unused
+//		case IMPULSE_109:	AttemptToBuyItem( "weapon_napalmgun" );				break;
+//		case IMPULSE_110:	/* AttemptToBuyItem( "weapon_dmg" );*/				break;
+//		case IMPULSE_111:	break; // Unused
+//		case IMPULSE_112:	break; // Unused
+//		case IMPULSE_113:	break; // Unused
+//		case IMPULSE_114:	break; // Unused
+//		case IMPULSE_115:	break; // Unused
+//		case IMPULSE_116:	break; // Unused
+//		case IMPULSE_117:	break; // Unused
+//		case IMPULSE_118:	AttemptToBuyItem( "item_armor_small" );				break;
+//		case IMPULSE_119:	AttemptToBuyItem( "item_armor_large" );				break;
+//		case IMPULSE_120:	AttemptToBuyItem( "ammorefill" );					break;
+//		case IMPULSE_121:	break; // Unused
+//		case IMPULSE_122:	break; // Unused
+//		case IMPULSE_123:	AttemptToBuyItem( "ammo_regen" );					break;
+//		case IMPULSE_124:	AttemptToBuyItem( "health_regen" );					break;
+//		case IMPULSE_125:	AttemptToBuyItem( "damage_boost" );					break;
+//		case IMPULSE_126:	break; // Unused
+//		case IMPULSE_127:	break; // Unused
+//// RITUAL END
+//
+//		case IMPULSE_50: {
+//			ToggleFlashlight ( );
+//			break;
+//		}
+//
+// 		case IMPULSE_51: {
+// 			LastWeapon();
+// 			break;
+// 		}
+// jmarshall end
 	} 
 
 //RAVEN BEGIN
@@ -8641,6 +8654,10 @@ bool idPlayer::HandleESC( void ) {
 // jdischler: Straight from the top, cinematic skipping on xenon is OFFICIALLY OUT.  Too many problems with it and not enough time to properly address them.
 #ifndef _XENON
 	if ( gameLocal.inCinematic ) {
+		if ( gameLocal.time < gameLocal.cinematicSkipTime ) {
+			// ignore skip input briefly when a cinematic starts
+			return true;
+		}
 		return SkipCinematic();
 	}
 #endif
@@ -8741,7 +8758,9 @@ void idPlayer::AdjustSpeed( void ) {
 	} else if ( noclip ) {
 		speed = pm_noclipspeed.GetFloat();
 		bobFrac = 0.0f;
- 	} else if ( !physicsObj.OnLadder() && ( usercmd.buttons & BUTTON_RUN ) && ( usercmd.forwardmove || usercmd.rightmove ) && ( usercmd.upmove >= 0 ) ) {
+// jmarshall - force run, eval.
+ 	} else if ( !physicsObj.OnLadder() /*&& ( usercmd.buttons & BUTTON_RUN )*/ && ( usercmd.forwardmove || usercmd.rightmove ) && ( usercmd.upmove >= 0 ) ) {
+// jmarshall end
 		bobFrac = 1.0f;
 		speed = pm_speed.GetFloat();
 	} else {
@@ -9311,7 +9330,7 @@ void idPlayer::Think( void ) {
 #endif
 
  	// Dont do any thinking if we are in modview
-	if ( gameLocal.editors & EDITOR_MODVIEW || gameEdit->PlayPlayback() ) {
+	if ( gameEdit->PlayPlayback() ) {
 		// calculate the exact bobbed view position, which is used to
 		// position the view weapon, among other things
 		CalculateFirstPersonView();
@@ -10191,6 +10210,14 @@ void idPlayer::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &di
 
  	// inform the attacker that they hit someone
  	attacker->DamageFeedback( this, inflictor, damage );
+// jmarshall
+	if (gameLocal.IsMultiplayer() && gameLocal.isServer) {
+		if (attacker->IsType(rvmBot::GetClassType()) || attacker->IsType(idPlayer::GetClassType()))
+		{
+			InflictedDamageEvent(attacker);
+		}
+	}
+// jmarshall end
 	
 //RAVEN BEGIN
 //asalmon: Xenon needs stats in singleplayer
@@ -10601,7 +10628,9 @@ void idPlayer::CalculateViewWeaponPos( idVec3 &origin, idMat3 &axis ) {
 	const idMat3 &viewAxis = firstPersonViewAxis;
 
 	// these cvars are just for hand tweaking before moving a value to the weapon def
-	idVec3	gunpos( g_gun_x.GetFloat(), g_gun_y.GetFloat(), g_gun_z.GetFloat() );
+	idVec3	gunpos( g_gun_x.GetFloat() + cl_gun_x.GetFloat(),
+					g_gun_y.GetFloat() + cl_gun_y.GetFloat(),
+					g_gun_z.GetFloat() + cl_gun_z.GetFloat() );
 	gunpos += weapon->GetViewModelOffset ( );
 
 	// as the player changes direction, the gun will take a small lag
@@ -10955,6 +10984,8 @@ spectate follow?
 ==================
 */
 void idPlayer::SmoothenRenderView( bool firstPerson ) {
+// jmarshall - new demo support?
+/*
 	int d1, d2;
 	idAngles angles, anglesDelta, newAngles;
 
@@ -10989,6 +11020,7 @@ void idPlayer::SmoothenRenderView( bool firstPerson ) {
 			firstPersonViewAxis = renderView->viewaxis;
 		}
 	}
+*/
 }
 
 /*
@@ -12212,8 +12244,8 @@ void idPlayer::PredictionErrorDecay( void ) {
 			predictionErrorTime = gameLocal.time;
 
 			if ( net_showPredictionError.GetInteger() == entityNumber ) {
-				renderSystem->DebugGraph( predictionOriginError.Length(), 0.0f, 100.0f, colorGreen );
-				renderSystem->DebugGraph( predictionAnglesError.Length(), 0.0f, 180.0f, colorBlue );
+				//renderSystem->DebugGraph( predictionOriginError.Length(), 0.0f, 100.0f, colorGreen );
+				//renderSystem->DebugGraph( predictionAnglesError.Length(), 0.0f, 180.0f, colorBlue );
 			}
 		}
 
@@ -14075,3 +14107,49 @@ int idPlayer::CanSelectWeapon(const char* weaponName)
 }
 
 // RITUAL END
+
+// jmarshall
+const char* idPlayer::GetNetName(void) {
+	if (!gameLocal.IsMultiplayer()) {
+		gameLocal.Error("Can't get net name in singleplayer!");
+		return NULL;
+	}
+
+	return gameLocal.userInfo[entityNumber].GetString("ui_name");
+}
+
+/*
+===============
+idPlayer::IsShooting
+==============
+*/
+bool idPlayer::IsShooting(void)
+{
+	return pfl.attackHeld;
+}
+
+/*
+===============
+idPlayer::GetViewHeight
+==============
+*/
+float idPlayer::GetViewHeight(void) {
+	float newEyeOffset = 0.0f;
+	if (spectating) {
+		newEyeOffset = 0.0f;
+	}
+	else if (health <= 0) {
+		newEyeOffset = pm_deadviewheight.GetFloat();
+	}
+	else if (physicsObj.IsCrouching()) {
+		newEyeOffset = pm_crouchviewheight.GetFloat();
+	}
+	else if (IsInVehicle()) {
+		newEyeOffset = 0.0f;
+	}
+	else {
+		newEyeOffset = pm_normalviewheight.GetFloat();
+	}
+	return newEyeOffset;
+}
+// jmarshall end

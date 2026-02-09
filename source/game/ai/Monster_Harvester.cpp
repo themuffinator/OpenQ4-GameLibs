@@ -6,8 +6,8 @@ AI for the fat guy on the putra level
 ================
 */
 
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "../Game_local.h"
 #include "../Projectile.h"
@@ -813,13 +813,13 @@ const char* rvMonsterHarvester::GetMeleeAttackAnim ( const idVec3& target ) {
 	if ( yaw < -10.0f ) {
 		if ( partHealth[PART_LEG_FR] <= 0 )
 		{
-			return false;
+			return NULL;
 		}
 		animName = "attack_rleg_fw_rt";
 	} else if ( yaw > 10.0f ) {
 		if ( partHealth[PART_LEG_FL] <= 0 )
 		{
-			return false;
+			return NULL;
 		}
 		animName = "attack_lleg_fw_lt";
 	} else{
@@ -827,7 +827,7 @@ const char* rvMonsterHarvester::GetMeleeAttackAnim ( const idVec3& target ) {
 		{
 			if ( partHealth[PART_LEG_FL] <= 0 )
 			{
-				return false;
+				return NULL;
 			}
 			animName = "attack_lleg_fw";
 		}
@@ -835,7 +835,7 @@ const char* rvMonsterHarvester::GetMeleeAttackAnim ( const idVec3& target ) {
 		{
 			if ( partHealth[PART_LEG_FR] <= 0 )
 			{
-				return false;
+				return NULL;
 			}
 			animName = "attack_rleg_fw";
 		}

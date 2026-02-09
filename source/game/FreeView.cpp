@@ -1,5 +1,4 @@
-#include "../idlib/precompiled.h"
-#pragma hdrstop
+#include "Game_local.h"
 
 /*
 ===============
@@ -110,9 +109,9 @@ void idFreeView::Draw( void ) {
 	if ( portalSky ) {
 		renderView_t portalSkyView = view;
 		portalSky->GetViewParms( &portalSkyView );
-		gameRenderWorld->RenderScene( &portalSkyView, RF_DEFER_COMMAND_SUBMIT | RF_PORTAL_SKY );
+		gameRenderWorld->RenderScene( &portalSkyView );
 	}
-	gameRenderWorld->RenderScene( &view, RF_PRIMARY_VIEW );
+	gameRenderWorld->RenderScene( &view );
 }
 
 /*

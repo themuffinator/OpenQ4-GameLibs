@@ -4,8 +4,8 @@
 // Copyright 2002-2004 Raven Software
 //----------------------------------------------------------------
 
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "../Game_local.h"
 #include "ClientEffect.h"
@@ -41,7 +41,15 @@ void rvClientEffect::Init ( const idDecl *effect ) {
 	
 	renderEffect.declEffect	= effect;
 	renderEffect.startTime	= -1.0f;
+	renderEffect.inConnectedArea = true;
 	renderEffect.referenceSoundHandle = -1;
+	// Keep effect color/brightness sane even on paths that defer/skip Play().
+	renderEffect.shaderParms[SHADERPARM_RED] = 1.0f;
+	renderEffect.shaderParms[SHADERPARM_GREEN] = 1.0f;
+	renderEffect.shaderParms[SHADERPARM_BLUE] = 1.0f;
+	renderEffect.shaderParms[SHADERPARM_ALPHA] = 1.0f;
+	renderEffect.shaderParms[SHADERPARM_BRIGHTNESS] = 1.0f;
+	renderEffect.shaderParms[SHADERPARM_TIMEOFFSET] = MS2SEC( gameLocal.time );
 	effectDefHandle = -1;
 	endOriginJoint	= INVALID_JOINT;
 }
@@ -226,7 +234,10 @@ bool rvClientEffect::Play ( int _startTime, bool _loop, const idVec3& endOrigin 
 		// Copy suppress values from parent entity
 		renderEffect.allowSurfaceInViewID	 = renderEnt->allowSurfaceInViewID;
 		renderEffect.suppressSurfaceInViewID = renderEnt->suppressSurfaceInViewID;
-		renderEffect.weaponDepthHackInViewID = renderEnt->weaponDepthHackInViewID;
+		// View-model depth hack on the parent should not be inherited by default;
+		// most attached FX (muzzle flashes/impacts) must still depth-test against
+		// the weapon model to match retail layering.
+		renderEffect.weaponDepthHackInViewID = 0;
   	}
 
 	renderEffect.shaderParms[SHADERPARM_RED] = 1.0f;
@@ -348,6 +359,7 @@ rvClientEffect::Restore
 void rvClientEffect::Restore( idRestoreGame *savefile ) {
 	savefile->ReadRenderEffect( renderEffect );
 	effectDefHandle = -1;
+	renderEffect.referenceSoundHandle = -1;
 	savefile->ReadJoint( endOriginJoint );
 }
 

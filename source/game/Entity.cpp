@@ -1,5 +1,5 @@
-#include "../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "Game_local.h"
 
@@ -1439,21 +1439,65 @@ void idEntity::UpdateVisuals( void ) {
 
 /*
 ================
+IsValidPVSBounds
+================
+*/
+static bool IsValidPVSBounds( const idBounds &bounds ) {
+	for ( int axis = 0; axis < 3; axis++ ) {
+		const float mins = bounds[0][axis];
+		const float maxs = bounds[1][axis];
+		const float extent = maxs - mins;
+
+		if ( mins != mins || maxs != maxs ) {
+			return false;
+		}
+		if ( mins <= -idMath::INFINITY || mins >= idMath::INFINITY || maxs <= -idMath::INFINITY || maxs >= idMath::INFINITY ) {
+			return false;
+		}
+		if ( mins > maxs ) {
+			return false;
+		}
+		if ( extent < 0.0f || extent >= 1e4f ) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/*
+================
 idEntity::UpdatePVSAreas
 ================
 */
 void idEntity::UpdatePVSAreas( void ) {
 	int localNumPVSAreas, localPVSAreas[32];
 	idBounds modelAbsBounds;
+	const idPhysics *physicsObj = GetPhysics();
+	const idBounds fallbackBounds = idBounds( renderEntity.origin ).Expand( 64.0f );
 	int i;
 
-	modelAbsBounds.FromTransformedBounds( renderEntity.bounds, renderEntity.origin, renderEntity.axis );
+	if ( IsValidPVSBounds( renderEntity.bounds ) ) {
+		modelAbsBounds.FromTransformedBounds( renderEntity.bounds, renderEntity.origin, renderEntity.axis );
+	} else if ( physicsObj != NULL ) {
+		modelAbsBounds = physicsObj->GetAbsBounds();
+	} else {
+		modelAbsBounds = fallbackBounds;
+	}
+
+	if ( !IsValidPVSBounds( modelAbsBounds ) && physicsObj != NULL ) {
+		modelAbsBounds = physicsObj->GetAbsBounds();
+	}
+	if ( !IsValidPVSBounds( modelAbsBounds ) ) {
+		modelAbsBounds = fallbackBounds;
+	}
+
 	localNumPVSAreas = gameLocal.pvs.GetPVSAreas( modelAbsBounds, localPVSAreas, sizeof( localPVSAreas ) / sizeof( localPVSAreas[0] ) );
 
 	// FIXME: some particle systems may have huge bounds and end up in many PVS areas
 	// the first MAX_PVS_AREAS may not be visible to a network client and as a result the particle system may not show up when it should
 	if ( localNumPVSAreas > MAX_PVS_AREAS ) {
-		localNumPVSAreas = gameLocal.pvs.GetPVSAreas( idBounds( renderEntity.origin ).Expand( 64.0f ), localPVSAreas, sizeof( localPVSAreas ) / sizeof( localPVSAreas[0] ) );
+		localNumPVSAreas = gameLocal.pvs.GetPVSAreas( fallbackBounds, localPVSAreas, sizeof( localPVSAreas ) / sizeof( localPVSAreas[0] ) );
 	}
 
 	for ( numPVSAreas = 0; numPVSAreas < MAX_PVS_AREAS && numPVSAreas < localNumPVSAreas; numPVSAreas++ ) {
@@ -1602,9 +1646,11 @@ void idEntity::Present( void ) {
 	// if there is no handle yet, go ahead and add it, ignoring the last predict frame early out
 	// if not, that causes next render frame to have a bunch of spurious primitive draws ( r_showPrimitives )
 	// ( we suspect this is because TH_UPDATEVISUALS doesn't get cleared? )
-	if ( !gameLocal.isLastPredictFrame && modelDefHandle != -1 ) {
-		return;
-	}
+// jmarshall
+	//if ( !gameLocal.isLastPredictFrame && modelDefHandle != -1 ) {
+	//	return;
+	//}
+// jmarshall end
 
 // RAVEN BEGIN
 // ddynerman: don't render objects not in our instance (only on server)
@@ -2077,7 +2123,8 @@ bool idEntity::StartSoundShader( const idSoundShader *shader, const s_channelTyp
 
 	UpdateSound();
 
-	idSoundEmitter *emitter = soundSystem->EmitterForIndex( SOUNDWORLD_GAME, refSound.referenceSoundHandle );
+	idSoundEmitter* emitter = NULL;
+	emitter = soundSystem->EmitterForIndex(SOUNDWORLD_GAME, refSound.referenceSoundHandle);
 	if ( emitter ) {
 		emitter->UpdateEmitter( refSound.origin, refSound.velocity, refSound.listenerId, &refSound.parms );
         len = emitter->StartSound( shader, channel, diversity, soundShaderFlags );
@@ -2119,7 +2166,8 @@ void idEntity::StopSound( const s_channelType channel, bool broadcast ) {
 	}
 
 // RAVEN BEGIN
-	idSoundEmitter *emitter = soundSystem->EmitterForIndex( SOUNDWORLD_GAME, refSound.referenceSoundHandle );
+	idSoundEmitter* emitter = NULL;
+	emitter = soundSystem->EmitterForIndex(SOUNDWORLD_GAME, refSound.referenceSoundHandle);
 	if ( emitter ) {
 		emitter->StopSound( channel );
 	}
@@ -2144,7 +2192,9 @@ idEntity::UpdateSound
 */
 void idEntity::UpdateSound( void ) {
 // RAVEN BEGIN
-	idSoundEmitter *emitter = soundSystem->EmitterForIndex( SOUNDWORLD_GAME, refSound.referenceSoundHandle );
+	idSoundEmitter* emitter = NULL;
+	
+	emitter = soundSystem->EmitterForIndex(SOUNDWORLD_GAME, refSound.referenceSoundHandle);
 	if ( emitter ) {
 // RAVEN END
 		idVec3 origin;
@@ -4387,7 +4437,7 @@ void idEntity::ShowSurface ( const char* surface ) {
 		return;
 	}
 
-	renderEntity.suppressSurfaceMask &= (~renderEntity.hModel->GetSurfaceMask ( surface ));
+//	renderEntity.suppressSurfaceMask &= (~renderEntity.hModel->GetSurfaceMask ( surface ));
 }
 
 /*
@@ -4409,7 +4459,7 @@ void idEntity::HideSurface ( const char* surface ) {
 		return;
 	}
 
-	renderEntity.suppressSurfaceMask |= renderEntity.hModel->GetSurfaceMask ( surface ) ;
+	//renderEntity.suppressSurfaceMask |= renderEntity.hModel->GetSurfaceMask ( surface ) ;
 }
 
 /*
@@ -5972,16 +6022,11 @@ bool idEntity::ClientReceiveEvent( int event, int time, const idBitMsg &msg ) {
 // bdube: new events
 		case EVENT_PLAYEFFECT_JOINT: {
 			const idDecl*		effect;
-			idCQuat				quat;
 			idVec3				origin;
 			rvClientEffect*		clientEffect;
 			effectCategory_t	category;
 			jointHandle_t		jointHandle;
 			bool				loop;
-
-			// TMP - not quite sure this is still used for anything
-			common->Warning( "FIXME: idEntity::PlayEffect happens" );
-			assert( false );
 		
 			effect = idGameLocal::ReadDecl( msg, DECL_EFFECT );
 			jointHandle = ( jointHandle_t )msg.ReadLong();
@@ -5991,18 +6036,25 @@ bool idEntity::ClientReceiveEvent( int event, int time, const idBitMsg &msg ) {
 			origin.z = msg.ReadFloat( );
 			category = ( effectCategory_t )msg.ReadByte();
 
-			if ( bse->CanPlayRateLimited( category ) ) {
-			// mwhitlock: Dynamic memory consolidation
-				RV_PUSH_SYS_HEAP_ID(RV_HEAP_ID_MULTIPLE_FRAME);
-				clientEffect = new rvClientEffect( effect );
-				RV_POP_HEAP();
-
-				clientEffect->SetOrigin ( vec3_origin );
-				clientEffect->SetAxis ( mat3_identity );
-				clientEffect->Bind( this, jointHandle );
-
-				clientEffect->Play( time, loop, origin );
+			if ( !effect ) {
+				return true;
 			}
+			if ( bse->Filtered( effect->GetName(), category ) ) {
+				return true;
+			}
+
+			// Filtered() already applies category rate-limiting.
+			// mwhitlock: Dynamic memory consolidation
+			RV_PUSH_SYS_HEAP_ID(RV_HEAP_ID_MULTIPLE_FRAME);
+			clientEffect = new rvClientEffect( effect );
+			RV_POP_HEAP();
+
+			clientEffect->SetOrigin ( vec3_origin );
+			clientEffect->SetAxis ( mat3_identity );
+			clientEffect->Bind( this, jointHandle );
+			clientEffect->SetGravity( gameLocal.GetCurrentGravity( this ) );
+
+			clientEffect->Play( time, loop, origin );
 			return true;
 		}
 		
@@ -6031,18 +6083,25 @@ bool idEntity::ClientReceiveEvent( int event, int time, const idBitMsg &msg ) {
 			origin2.z = msg.ReadFloat( );
 			category = ( effectCategory_t )msg.ReadByte();
 
-			if ( bse->CanPlayRateLimited( category ) ) {
-				// mwhitlock: Dynamic memory consolidation
-				RV_PUSH_SYS_HEAP_ID(RV_HEAP_ID_MULTIPLE_FRAME);
-				clientEffect = new rvClientEffect( effect );
-				RV_POP_HEAP();
-
-				clientEffect->SetOrigin ( origin );
-				clientEffect->SetAxis ( quat.ToMat3() );
-				clientEffect->Bind ( this );
-
-				clientEffect->Play ( time, loop, origin2 );
+			if ( !effect ) {
+				return true;
 			}
+			if ( bse->Filtered( effect->GetName(), category ) ) {
+				return true;
+			}
+
+			// Filtered() already applies category rate-limiting.
+			// mwhitlock: Dynamic memory consolidation
+			RV_PUSH_SYS_HEAP_ID(RV_HEAP_ID_MULTIPLE_FRAME);
+			clientEffect = new rvClientEffect( effect );
+			RV_POP_HEAP();
+
+			clientEffect->SetOrigin ( origin );
+			clientEffect->SetAxis ( quat.ToMat3() );
+			clientEffect->Bind ( this );
+			clientEffect->SetGravity( gameLocal.GetCurrentGravity( this ) );
+
+			clientEffect->Play ( time, loop, origin2 );
 			return true;
 		}
 // RAVEN END		
@@ -6787,3 +6846,60 @@ void idAnimatedEntity::Event_CollapseJoints ( const char* jointnames, const char
 }
 // RAVEN END
 
+
+/*
+==============
+idEntity::GetKey
+==============
+*/
+// jmarshall
+const char* idEntity::GetKey(const char* key)
+{
+	const char* value;
+
+	spawnArgs.GetString(key, "", &value);
+
+	return value;
+}
+
+/*
+==============
+idEntity::GetFloat
+==============
+*/
+
+float idEntity::GetFloat(const char* key)
+{
+	return spawnArgs.GetFloat(key, "0");
+}
+
+/*
+==============
+idEntity::GetInt
+==============
+*/
+int idEntity::GetInt(const char* key)
+{
+	return spawnArgs.GetInt(key, "0");
+}
+
+/*
+==============
+idEntity::GetBool
+==============
+*/
+bool idEntity::GetBool(const char* key)
+{
+	return spawnArgs.GetBool(key, "0");
+}
+
+/*
+================
+idEntity::GetOrigin
+================
+*/
+idVec3 idEntity::GetOrigin(void)
+{
+	return GetLocalCoordinates(GetPhysics()->GetOrigin());
+}
+// jmarshall end

@@ -1,22 +1,10 @@
 
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "../Game_local.h"
 
-#if defined(_WIN32)
-	#if defined(__has_include)
-		#if __has_include("TypeInfo.h")
-			#include "TypeInfo.h"
-		#else
-			#include "NoGameTypeInfo.h"
-		#endif
-	#else
-		#include "TypeInfo.h"
-	#endif
-#else
-	#include "NoGameTypeInfo.h"
-#endif
+#include "NoGameTypeInfo.h"
 
 /*
 Save game related helper classes.
@@ -1996,7 +1984,7 @@ void idRestoreGame::ReadUsercmd( usercmd_t &usercmd ) {
 	ReadInt( usercmd.duplicateCount );
 // RAVEN BEGIN
 // ddynerman: larger button bitfield
-	ReadShort( usercmd.buttons );
+	ReadByte( usercmd.buttons ); // jmarshall: changed back to a byte
 // RAVEN END
 	ReadSignedChar( usercmd.forwardmove );
 	ReadSignedChar( usercmd.rightmove );
@@ -2094,17 +2082,17 @@ int idRestoreGame::GetBuildNumber( void ) {
 
 void Cmd_CheckSave_f( const idCmdArgs &args )
 {
-	idPlayer	*lp = gameLocal.GetLocalPlayer();
-	idFile		*mp = fileSystem->GetNewFileMemory();
-	idSaveGame	sg( mp );
-
-	sg.CallSave_r( lp->GetType(), lp );
-
-
-	mp->Rewind();
-	idPlayer		test;
-	idRestoreGame	rg( mp );
-
-	rg.CallRestore_r( test.GetType(), &test );
+	//idPlayer	*lp = gameLocal.GetLocalPlayer();
+	//idFile		*mp = fileSystem->GetNewFileMemory();
+	//idSaveGame	sg( mp );
+	//
+	//sg.CallSave_r( lp->GetType(), lp );
+	//
+	//
+	//mp->Rewind();
+	//idPlayer		test;
+	//idRestoreGame	rg( mp );
+	//
+	//rg.CallRestore_r( test.GetType(), &test );
 }
 

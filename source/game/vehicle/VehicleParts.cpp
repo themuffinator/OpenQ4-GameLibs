@@ -4,8 +4,8 @@
 // Copyright 2002-2004 Raven Software
 //----------------------------------------------------------------
 
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "../Game_local.h"
 #include "../Projectile.h"
@@ -180,7 +180,7 @@ void rvVehicleSound::Spawn ( void ) {
 	volume[0] = idMath::dBToScale( volume[0] );
 	volume[1] = idMath::dBToScale( volume[1] );
 
-	declManager->FindSound ( soundName )->GetParms ( &refSound.parms );
+	refSound.parms = *declManager->FindSound ( soundName )->GetParms ();
 }
 
 /*
@@ -189,7 +189,7 @@ rvVehicleSound::RunPostPhysics
 =====================
 */
 void rvVehicleSound::RunPostPhysics ( void ) {
-	Update ( );
+	//Update ( );
 }
 
 /*
@@ -219,7 +219,8 @@ void rvVehicleSound::Play ( void ) {
 		return;
 	}
 
-	idSoundEmitter *emitter = soundSystem->EmitterForIndex( SOUNDWORLD_GAME, refSound.referenceSoundHandle );
+	idSoundEmitter* emitter = NULL;
+	emitter = soundSystem->EmitterForIndex(SOUNDWORLD_GAME, refSound.referenceSoundHandle);
 	if ( !emitter )  {
 		refSound.referenceSoundHandle = soundSystem->AllocSoundEmitter( SOUNDWORLD_GAME );
 	}
@@ -264,7 +265,8 @@ void rvVehicleSound::Update ( bool force ) {
 		return;
 	}
 
-	idSoundEmitter *emitter = soundSystem->EmitterForIndex( SOUNDWORLD_GAME, refSound.referenceSoundHandle );
+	idSoundEmitter* emitter = NULL;
+	emitter = soundSystem->EmitterForIndex(SOUNDWORLD_GAME, refSound.referenceSoundHandle);
 	if( !emitter ) {
 		return;
 	}
@@ -527,17 +529,19 @@ rvVehicleLight::Impulse
 =====================
 */
 void rvVehicleLight::Impulse ( int impulse ) {
-	switch ( impulse ) {
-		case IMPULSE_50:
-			if ( lightOn ) {
-				lightOn = false;
-				TurnOff ( );
-			} else {
-				lightOn = true;
-				TurnOn ( );
-			}
-			break;
-	}
+// jmarshall - todo
+	//switch ( impulse ) {
+	//	case IMPULSE_50:
+	//		if ( lightOn ) {
+	//			lightOn = false;
+	//			TurnOff ( );
+	//		} else {
+	//			lightOn = true;
+	//			TurnOn ( );
+	//		}
+	//		break;
+	//}
+// jmarshall end
 }
 
 /*
@@ -1540,10 +1544,12 @@ void rvVehicleTurret::Spawn ( void ) {
 
 
 	// Find the vehicle part for the turret sound
-	if ( *spawnArgs.GetString ( "snd_loop", "" ) ) {
-		soundPart = position->AddPart ( rvVehicleSound::GetClassType(), spawnArgs );
-		static_cast<rvVehicleSound*>(position->GetPart(soundPart))->SetAutoActivate ( false );
-	}
+// jmarshall - sound parts causing a crash, disabling for now.
+	//if ( *spawnArgs.GetString ( "snd_loop", "" ) ) {
+	//	soundPart = position->AddPart ( rvVehicleSound::GetClassType(), spawnArgs );
+	//	static_cast<rvVehicleSound*>(position->GetPart(soundPart))->SetAutoActivate ( false );
+	//}
+// jmarshall end
 }
 
 /*
@@ -2350,9 +2356,8 @@ rvVehicleUserAnimated::SetFrame
 ================
 */
 void rvVehicleUserAnimated::SetFrame( const rvUserAnimatedAnim_t & anim ) {
-	int frame				= static_cast<int>( anim.frame );
-	float lerp				= anim.frame - frame;
-	frameBlend_t frameBlend	= { 0, frame, frame + 1, 1.0f - lerp, lerp };
+	float lerp				= anim.frame - int( anim.frame );
+	frameBlend_t frameBlend	= { 0, anim.frame, anim.frame + 1.0f, 1.0f - lerp, lerp };
 	position->GetParent()->GetAnimator()->SetFrame( anim.channel, anim.index, frameBlend );
 }
 

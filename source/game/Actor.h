@@ -1,5 +1,5 @@
 // RAVEN BEGIN
-// bdube: note that this file is no longer merged with Doom3 updates
+// bdube: note that this file is no longer merged with legacy engine updates
 //
 // MERGE_DATE 09/30/2004
 
@@ -144,6 +144,8 @@ public:
 	void					SetupBody( void );
 
 	virtual void			CheckBlink( void );
+
+	bool					PointVisible(const idVec3& point) const;
 
 	virtual bool			GetPhysicsToVisualTransform( idVec3 &origin, idMat3 &axis );
 	virtual bool			GetPhysicsToSoundTransform( idVec3 &origin, idMat3 &axis );

@@ -1,10 +1,10 @@
 // RAVEN BEGIN
-// bdube: note that this file is no longer merged with Doom3 updates
+// bdube: note that this file is no longer merged with legacy engine updates
 //
 // MERGE_DATE 09/30/2004
 
-#include "../../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "../Game_local.h"
 #include "../../game/Projectile.h"
@@ -873,9 +873,9 @@ void idAnim::CallFrameCommands( idEntity *ent, int from, int to ) const {
 							 command.string?command.string->c_str():"???" );
 			}
 
-			if ( ( gameLocal.editors & EDITOR_MODVIEW ) && !frameCommandInfo[command.type].modview ) {
-				continue;
-			}
+			//if ( ( gameLocal.editors & EDITOR_MODVIEW ) && !frameCommandInfo[command.type].modview ) {
+			//	continue;
+			//}
 // RAVEN END			
 
 			switch( command.type ) {
@@ -899,7 +899,9 @@ void idAnim::CallFrameCommands( idEntity *ent, int from, int to ) const {
 // abahr:
 				case FC_EVENTFUNCTION_ARGS: {
 					assert( command.event );
-					ent->ProcessEvent( command.event, (int)command.parmList );
+// jmarshall - 64bit
+					ent->ProcessEvent( command.event, (intptr_t)command.parmList );
+// jmarshall end
 					break;
 				}
 // bdube: support indirection and simplify
@@ -2819,7 +2821,7 @@ bool idDeclModelDef::ParseAnim( idLexer &src, int numDefaultAnims ) {
 idDeclModelDef::Parse
 ================
 */
-bool idDeclModelDef::Parse( const char *text, const int textLength, bool noCaching ) {
+bool idDeclModelDef::Parse( const char *text, const int textLength ) {
 	int					i;
 	int					num;
 	idStr				filename;
@@ -3064,13 +3066,16 @@ idDeclModelDef::Validate
 =====================
 */
 bool idDeclModelDef::Validate( const char *psText, int iTextLength, idStr &strReportTo ) const {
-	idDeclModelDef *pSelf = (idDeclModelDef*) declManager->AllocateDecl( DECL_MODELDEF );
-	bool bOk = pSelf->Parse( psText, iTextLength, false );
-	pSelf->FreeData();
-	delete pSelf->base;
-	delete pSelf;
-
-	return bOk;
+// jmarshall
+	//idDeclModelDef *pSelf = (idDeclModelDef*) declManager->AllocateDecl( DECL_MODELDEF );
+	//bool bOk = pSelf->Parse( psText, iTextLength, false );
+	//pSelf->FreeData();
+	//delete pSelf->base;
+	//delete pSelf;
+	//
+	//return bOk;
+	return true;
+// jmarshall end
 }
 
 /*
@@ -4824,7 +4829,6 @@ bool idAnimator::CreateFrame( int currentTime, bool force ) {
 	jointMod_t *		jointMod;
 // RAVEN END	
 	const idJointQuat *	defaultPose;
-
 	static idCVar		r_showSkel( "r_showSkel", "0", CVAR_RENDERER | CVAR_INTEGER, "draw the skeleton when model animates, 1 = draw model with skeleton, 2 = draw skeleton only, 3 = draw joints only", 0, 3, idCmdSystem::ArgCompletion_Integer<0,3> );
 
 	if ( gameLocal.inCinematic && gameLocal.skipCinematic ) {
@@ -5896,7 +5900,7 @@ idRenderModel *idGameEdit::ANIM_CreateMeshForAnim( idRenderModel *model, const c
 
 	ANIM_CreateAnimFrame( model, md5anim, ent.numJoints, ent.joints, FRAME2MS( frame ), offset, remove_origin_offset );
 
-	newmodel = model->InstantiateDynamicModel( &ent, NULL, NULL, ~SURF_COLLISION );
+	newmodel = model->InstantiateDynamicModel( &ent, NULL, NULL );
 
 	Mem_Free16( ent.joints );
 	ent.joints = NULL;

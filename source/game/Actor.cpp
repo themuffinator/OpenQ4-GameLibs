@@ -1,10 +1,10 @@
 // RAVEN BEGIN
-// bdube: note that this file is no longer merged with Doom3 updates
+// bdube: note that this file is no longer merged with legacy engine updates
 //
 // MERGE_DATE 09/30/2004
 
-#include "../idlib/precompiled.h"
-#pragma hdrstop
+
+
 
 #include "Game_local.h"
 
@@ -1182,6 +1182,24 @@ void idActor::SetupBody( void ) {
 	headAnim.Init ( this, &animator, ANIMCHANNEL_HEAD );
 	torsoAnim.Init( this, &animator, ANIMCHANNEL_TORSO );
 	legsAnim.Init( this, &animator, ANIMCHANNEL_LEGS );
+}
+
+/*
+=====================
+idActor::PointVisible
+=====================
+*/
+bool idActor::PointVisible(const idVec3& point) const
+{
+	trace_t results;
+	idVec3 start, end;
+
+	start = GetEyePosition();
+	end = point;
+	end[2] += 1.0f;
+
+	gameLocal.clip[0]->TracePoint(results, start, end, MASK_OPAQUE, this);
+	return (results.fraction >= 1.0f);
 }
 
 /*
