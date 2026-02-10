@@ -499,6 +499,18 @@ void idProjectile::Launch( const idVec3 &start, const idVec3 &dir, const idVec3 
 	PlayEffect( "fx_launch", renderEntity.origin, renderEntity.axis );
 	
 	flyEffect = PlayEffect( "fx_fly", renderEntity.origin, renderEntity.axis, true );
+	if ( !flyEffect ) {
+		const char* classname = spawnArgs.GetString( "classname" );
+		if ( g_grenadeTrail.GetBool() && !idStr::Icmpn( classname, "projectile_grenade", 18 ) ) {
+			const idDecl* grenadeTrail = ( const idDecl * )declManager->FindEffect( "effects/weapons/grenadelauncher/trail_mp", false );
+			if ( !grenadeTrail ) {
+				grenadeTrail = ( const idDecl * )declManager->FindEffect( "effects/weapons/grenadelauncher/trail", false );
+			}
+			if ( grenadeTrail ) {
+				flyEffect = PlayEffect( grenadeTrail, renderEntity.origin, renderEntity.axis, true );
+			}
+		}
+	}
 	flyEffectAttenuateSpeed = spawnArgs.GetFloat( "flyEffectAttenuateSpeed", "0" );
 
 	state = LAUNCHED;

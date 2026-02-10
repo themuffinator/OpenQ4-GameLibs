@@ -1171,7 +1171,7 @@ ID_INLINE bool idPlayer::IsZoomed( void ) {
 }
 
 ID_INLINE bool idPlayer::IsFlashlightOn( void ) {
-	return flashlightOn;
+	return !gameLocal.isMultiplayer && flashlightOn;
 }
 
 ID_INLINE rvViewWeapon* idPlayer::GetWeaponViewModel( void ) const {

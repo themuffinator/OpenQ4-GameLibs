@@ -7467,6 +7467,7 @@ Get the handle of the effect with the given name
 */
 const idDecl *idGameLocal::GetEffect ( const idDict& args, const char* effectName, const rvDeclMatType* materialType ) {
 	const char *effectFile = NULL;
+	const idDecl* effectDecl = NULL;
 
 	float chance = args.GetFloat ( idStr("effectchance ") + effectName, "1" );	
 	if ( random.RandomFloat ( ) > chance ) {
@@ -7496,7 +7497,10 @@ const idDecl *idGameLocal::GetEffect ( const idDict& args, const char* effectNam
 			result = args.GetString( temp );
 		}
 		if ( result && *result) {
-			return( ( const idDecl * )declManager->FindEffect( result ) );
+			effectDecl = ( const idDecl * )declManager->FindEffect( result, false );
+			if ( effectDecl ) {
+				return effectDecl;
+			}
 		}
 	}	
 
@@ -7525,9 +7529,32 @@ const idDecl *idGameLocal::GetEffect ( const idDict& args, const char* effectNam
 	}
 
 	effectFile = args.GetString( alternateEffect );
+	if ( effectFile && *effectFile ) {
+		effectDecl = ( const idDecl * )declManager->FindEffect( effectFile, false );
+		if ( effectDecl ) {
+			return effectDecl;
+		}
+	}
 
-	if ( !effectFile || !*effectFile ) {
-		effectFile = args.GetString( effectName );
+	effectFile = args.GetString( effectName );
+	if ( effectFile && *effectFile ) {
+		effectDecl = ( const idDecl * )declManager->FindEffect( effectFile, false );
+		if ( effectDecl ) {
+			return effectDecl;
+		}
+	}
+
+	// Compatibility fallback: keep grenade launcher smoke trails available even
+	// when projectile defs omit fx_fly/fx_fly_mp or point at a missing decl.
+	if ( !classname.Icmpn( "projectile_grenade", 18 ) &&
+		 ( !idStr::Icmp( effectName, "fx_fly" ) || !idStr::Icmp( effectName, "fx_fly_mp" ) ) ) {
+		effectDecl = ( const idDecl * )declManager->FindEffect( "effects/weapons/grenadelauncher/trail_mp", false );
+		if ( !effectDecl ) {
+			effectDecl = ( const idDecl * )declManager->FindEffect( "effects/weapons/grenadelauncher/trail", false );
+		}
+		if ( effectDecl ) {
+			return effectDecl;
+		}
 	}
 
 	if ( !effectFile || !*effectFile ) {

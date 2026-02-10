@@ -1,6 +1,6 @@
 # OpenQ4-GameLibs
 
-Open-source Quake 4 game libraries maintained for use with the OpenQ4 engine project.
+Quake 4 game libraries maintained for use with the OpenQ4 engine project.
 
 ## Overview
 OpenQ4-GameLibs contains Quake4SDK-derived single-player and multiplayer game library code, maintained with a compatibility-first focus for modern development workflows.
@@ -60,4 +60,6 @@ From OpenQ4, you can invoke this same flow with:
 - OpenQ4 contributors
 
 ## License
-GNU GPL v3. See `LICENSE`.
+This repository is licensed under the Quake 4 Software Development Kit Limited Use License Agreement (EULA), not the GNU GPL.
+
+See `LICENSE` and `doc/legacy/EULA.Development Kit.rtf`.
