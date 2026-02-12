@@ -220,8 +220,12 @@ void idPlayerView::SetPlayerEntity( idPlayer *playerEnt ) {
 	if( !playerEnt ) {
 		return;
 	}
-		
-	dict = gameLocal.FindEntityDefDict( playerEnt->spawnArgs.GetString("def_playerView"), false );
+
+	const char *playerViewDef = playerEnt->spawnArgs.GetString( "def_playerView" );
+	dict = gameLocal.FindEntityDefDict( playerViewDef, false );
+	if ( !dict ) {
+		dict = gameLocal.FindEntityDefDict( "playerView_marine", false );
+	}
 
 	if( dict ) {
 		dvMaterial = declManager->FindMaterial( dict->GetString("mtr_doubleVision") );
@@ -280,7 +284,7 @@ which will determine the head kick direction
 */
 // RAVEN BEGIN
 // jnewquist: Controller rumble
-void idPlayerView::DamageImpulse( idVec3 localKickDir, const idDict *damageDef, int damage ) {
+void idPlayerView::DamageImpulse( idVec3 localKickDir, const idDict *damageDef, int damage, const char *damageDefName ) {
 	//
 	// double vision effect
 	//
@@ -345,22 +349,74 @@ void idPlayerView::DamageImpulse( idVec3 localKickDir, const idDict *damageDef, 
 	//
 	// screen blob
 	//
-	float	blobTime = damageDef->GetFloat( "blob_time" );
-	if ( blobTime ) {
+	bool meleeDamageDef = ( damageDef->FindKey( "snd_hit" ) != NULL ) || ( damageDef->FindKey( "snd_miss" ) != NULL );
+	if ( !meleeDamageDef && damageDefName != NULL ) {
+		meleeDamageDef = idStr::Icmpn( damageDefName, "melee_", 6 ) == 0;
+	}
+
+	float blobTime = damageDef->GetFloat( "blob_time" );
+	if ( blobTime <= 0.0f && meleeDamageDef ) {
+		// Some stock melee defs leave blob_time at 0 while still defining blob visuals.
+		blobTime = 500.0f;
+	}
+
+	if ( blobTime > 0.0f ) {
 		screenBlob_t	*blob = GetScreenBlob();
 		blob->startFadeTime = gameLocal.time;
 		blob->finishTime = gameLocal.time + blobTime * g_blobTime.GetFloat();
 
 		const char *materialName = damageDef->GetString( "mtr_blob" );
-		blob->material = declManager->FindMaterial( materialName );
-		blob->x = damageDef->GetFloat( "blob_x" );
+		if ( !materialName[0] ) {
+			materialName = damageDef->GetString( "blob_material" );
+		}
+
+		const idMaterial *blobMaterial = NULL;
+		if ( materialName[0] ) {
+			blobMaterial = declManager->FindMaterial( materialName, false );
+			if ( blobMaterial == NULL && strchr( materialName, '/' ) == NULL && strchr( materialName, '\\' ) == NULL ) {
+				const idStr materialPath = va( "textures/decals/%s", materialName );
+				blobMaterial = declManager->FindMaterial( materialPath, false );
+			}
+		}
+		if ( blobMaterial == NULL ) {
+			blobMaterial = declManager->FindMaterial( "textures/decals/genericdamage" );
+		}
+		blob->material = blobMaterial;
+
+		float blobX = damageDef->GetFloat( "blob_x" );
+		if ( blobX == 0.0f ) {
+			blobX = damageDef->GetFloat( "blob_offset_x" );
+		}
+		blob->x = blobX;
 		blob->x += ( gameLocal.random.RandomInt()&63 ) - 32;
-		blob->y = damageDef->GetFloat( "blob_y" );
+		float blobY = damageDef->GetFloat( "blob_y" );
+		if ( blobY == 0.0f ) {
+			blobY = damageDef->GetFloat( "blob_offset_y" );
+		}
+		blob->y = blobY;
 		blob->y += ( gameLocal.random.RandomInt()&63 ) - 32;
+
+		float blobWidth = damageDef->GetFloat( "blob_width" );
+		float blobHeight = damageDef->GetFloat( "blob_height" );
+		if ( blobWidth <= 0.0f || blobHeight <= 0.0f ) {
+			const float blobSize = damageDef->GetFloat( "blob_size" );
+			if ( blobSize > 0.0f ) {
+				if ( blobWidth <= 0.0f ) {
+					blobWidth = blobSize;
+				}
+				if ( blobHeight <= 0.0f ) {
+					blobHeight = blobSize;
+				}
+			}
+		}
+		if ( blobWidth <= 0.0f || blobHeight <= 0.0f ) {
+			blobWidth = 400.0f;
+			blobHeight = 400.0f;
+		}
 		
 		float scale = ( 256 + ( ( gameLocal.random.RandomInt()&63 ) - 32 ) ) / 256.0f;
-		blob->w = damageDef->GetFloat( "blob_width" ) * g_blobSize.GetFloat() * scale;
-		blob->h = damageDef->GetFloat( "blob_height" ) * g_blobSize.GetFloat() * scale;
+		blob->w = blobWidth * g_blobSize.GetFloat() * scale;
+		blob->h = blobHeight * g_blobSize.GetFloat() * scale;
 		blob->s1 = 0;
 		blob->t1 = 0;
 		blob->s2 = 1;
@@ -383,7 +439,6 @@ but having it localized here lets the material be pre-looked up etc.
 ==================
 */
 void idPlayerView::AddBloodSpray( float duration ) {
-/*
 	if ( duration <= 0 || bloodSprayMaterial == NULL || g_skipViewEffects.GetBool() ) {
 		return;
 	}
@@ -418,7 +473,6 @@ void idPlayerView::AddBloodSpray( float duration ) {
 	blob->t1 = t1;
 	blob->s2 = s2;
 	blob->t2 = t2;
-*/
 }
 
 /*

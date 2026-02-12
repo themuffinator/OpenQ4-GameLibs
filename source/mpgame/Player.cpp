@@ -116,6 +116,21 @@ const idEventDef EV_Player_AllowNewObjectives( "<allownewobjectives>" );
 
 // RAVEN END
 
+static float Player_CalcAspectAgnosticZoomFov( float zoomFov ) {
+	// Weapon zoom defs are authored for the gameplay FOV path (4:3 baseline via CalcFov),
+	// so preserve the authored value and only clamp to a safe runtime range.
+	return idMath::ClampFloat( 1.0f, 179.0f, zoomFov );
+}
+
+static float Player_CalcZoomFraction( float currentFov, float defaultFov, float zoomFov ) {
+	const float zoomDelta = defaultFov - zoomFov;
+	if ( idMath::Fabs( zoomDelta ) <= idMath::FLOAT_EPSILON ) {
+		return 1.0f;
+	}
+
+	return idMath::ClampFloat( 0.0f, 1.0f, ( currentFov - zoomFov ) / zoomDelta );
+}
+
 CLASS_DECLARATION( idActor, idPlayer )
 //	EVENT( EV_Player_HideDatabaseEntry,		idPlayer::Event_HideDatabaseEntry )
 	EVENT( EV_Player_ZoomIn,				idPlayer::Event_ZoomIn )
@@ -7618,39 +7633,42 @@ void idPlayer::BobCycle( const idVec3 &pushVelocity ) {
 	// calculate angles for view bobbing
 	viewBobAngles.Zero();
 
-	// no view bob at all in MP while zoomed in
+	// Keep zoom anchored to the current view angles by removing angular/positional bob while zoomed.
 	if ( IsZoomed() ) {
 		bobCycle = 0;
 		bobFoot = 0;
 		bobfracsin = 0;	
-	} else {
-		viewaxis = viewAngles.ToMat3() * physicsObj.GetGravityAxis();
-
-		// add angles based on velocity
-		delta = velocity * viewaxis[0];
-		viewBobAngles.pitch += delta * pm_runpitch.GetFloat();
-		
-		delta = velocity * viewaxis[1];
-		viewBobAngles.roll -= delta * pm_runroll.GetFloat();
-
-		// add angles based on bob
-		// make sure the bob is visible even at low speeds
-		speed = xyspeed > 200 ? xyspeed : 200;
-
-		delta = bobfracsin * pm_bobpitch.GetFloat() * speed;
-		if ( physicsObj.IsCrouching() ) {
-			delta *= 3;		// crouching
-		}
-		viewBobAngles.pitch += delta;
-		delta = bobfracsin * pm_bobroll.GetFloat() * speed;
-		if ( physicsObj.IsCrouching() ) {
-			delta *= 3;		// crouching accentuates roll
-		}
-		if ( bobFoot & 1 ) {
-			delta = -delta;
-		}
-		viewBobAngles.roll += delta;
+		viewBob.Zero();
+		return;
 	}
+
+	viewaxis = viewAngles.ToMat3() * physicsObj.GetGravityAxis();
+
+	// add angles based on velocity
+	delta = velocity * viewaxis[0];
+	viewBobAngles.pitch += delta * pm_runpitch.GetFloat();
+	
+	delta = velocity * viewaxis[1];
+	viewBobAngles.roll -= delta * pm_runroll.GetFloat();
+
+	// add angles based on bob
+	// make sure the bob is visible even at low speeds
+	speed = xyspeed > 200 ? xyspeed : 200;
+
+	delta = bobfracsin * pm_bobpitch.GetFloat() * speed;
+	if ( physicsObj.IsCrouching() ) {
+		delta *= 3;		// crouching
+	}
+	viewBobAngles.pitch += delta;
+	delta = bobfracsin * pm_bobroll.GetFloat() * speed;
+	if ( physicsObj.IsCrouching() ) {
+		delta *= 3;		// crouching accentuates roll
+	}
+	if ( bobFoot & 1 ) {
+		delta = -delta;
+	}
+	viewBobAngles.roll += delta;
+
 	// calculate position for view bobbing
 	viewBob.Zero();
 
@@ -10189,7 +10207,7 @@ void idPlayer::Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &di
 	}
 
 	// move the world direction vector to local coordinates
-	ClientDamageEffects( damageDef->dict, dir, damage );
+	ClientDamageEffects( damageDef->dict, dir, damage, damageDefName );
 
  	// inform the attacker that they hit someone
  	attacker->DamageFeedback( this, inflictor, damage );
@@ -10466,13 +10484,15 @@ float idPlayer::CalcFov( bool honorZoom ) {
 		rvVehicleWeapon * weapon		= position ? position->GetActiveWeapon() : 0;
 
 		if ( zoomFov.IsDone( gameLocal.time ) ) {
- 			fov = ( honorZoom && zoomed && weapon ) ? weapon->GetZoomFov() : DefaultFov();
+			const float zoomTargetFov = ( weapon != NULL ) ? Player_CalcAspectAgnosticZoomFov( static_cast<float>( weapon->GetZoomFov() ) ) : DefaultFov();
+ 			fov = ( honorZoom && zoomed && weapon ) ? zoomTargetFov : DefaultFov();
 		} else {
 			fov = zoomFov.GetCurrentValue( gameLocal.time );
 		}
 	} else {
 		if ( zoomFov.IsDone( gameLocal.time ) ) {
- 			fov = ( honorZoom && zoomed && weapon ) ? weapon->GetZoomFov() : DefaultFov();
+			const float zoomTargetFov = ( weapon != NULL ) ? Player_CalcAspectAgnosticZoomFov( static_cast<float>( weapon->GetZoomFov() ) ) : DefaultFov();
+ 			fov = ( honorZoom && zoomed && weapon ) ? zoomTargetFov : DefaultFov();
 		} else {
 			fov = zoomFov.GetCurrentValue( gameLocal.time );
 		}
@@ -11604,11 +11624,11 @@ void idPlayer::Event_ZoomIn ( void ) {
 		}
 
 		currentFov = CalcFov ( true );
-		t  = currentFov - weapon->GetZoomFov();
-		t /= (DefaultFov() - weapon->GetZoomFov());
-		t *= weapon->GetZoomTime();
+		const float defaultFov = DefaultFov();
+		const float zoomTargetFov = Player_CalcAspectAgnosticZoomFov( static_cast<float>( weapon->GetZoomFov() ) );
+		t = Player_CalcZoomFraction( currentFov, defaultFov, zoomTargetFov ) * weapon->GetZoomTime();
 
-		zoomFov.Init( gameLocal.time, SEC2MS(t), currentFov, weapon->GetZoomFov() );
+		zoomFov.Init( gameLocal.time, SEC2MS(t), currentFov, zoomTargetFov );
 				
 		zoomed = true;
 		if ( weapon->GetZoomGui() )	{
@@ -11617,11 +11637,11 @@ void idPlayer::Event_ZoomIn ( void ) {
 		}
 	} else if ( weapon && this->weaponEnabled ) {
 		currentFov = CalcFov ( true );
-		t  = currentFov - weapon->GetZoomFov();
-		t /= (DefaultFov() - weapon->GetZoomFov());
-		t *= weapon->GetZoomTime();
+		const float defaultFov = DefaultFov();
+		const float zoomTargetFov = Player_CalcAspectAgnosticZoomFov( static_cast<float>( weapon->GetZoomFov() ) );
+		t = Player_CalcZoomFraction( currentFov, defaultFov, zoomTargetFov ) * weapon->GetZoomTime();
 
-		zoomFov.Init( gameLocal.time, SEC2MS(t), currentFov, weapon->GetZoomFov() );
+		zoomFov.Init( gameLocal.time, SEC2MS(t), currentFov, zoomTargetFov );
 				
 		zoomed = true;
 		if ( weapon->GetZoomGui() )	{
@@ -11657,9 +11677,9 @@ void idPlayer::Event_ZoomOut ( void ) {
 		}
 
 		currentFov = CalcFov ( true );
-		t  = currentFov - weapon->GetZoomFov();
-		t /= (DefaultFov() - weapon->GetZoomFov());
-		t  = (1.0f - t) * weapon->GetZoomTime();
+		const float defaultFov = DefaultFov();
+		const float zoomTargetFov = Player_CalcAspectAgnosticZoomFov( static_cast<float>( weapon->GetZoomFov() ) );
+		t = ( 1.0f - Player_CalcZoomFraction( currentFov, defaultFov, zoomTargetFov ) ) * weapon->GetZoomTime();
 
 		zoomFov.Init( gameLocal.time, SEC2MS(t), currentFov, DefaultFov() );
 		zoomed = false;
@@ -11675,9 +11695,9 @@ void idPlayer::Event_ZoomOut ( void ) {
 		}
 
 		currentFov = CalcFov ( true );
-		t  = currentFov - weapon->GetZoomFov();
-		t /= (DefaultFov() - weapon->GetZoomFov());
-		t  = (1.0f - t) * weapon->GetZoomTime();
+		const float defaultFov = DefaultFov();
+		const float zoomTargetFov = Player_CalcAspectAgnosticZoomFov( static_cast<float>( weapon->GetZoomFov() ) );
+		t = ( 1.0f - Player_CalcZoomFraction( currentFov, defaultFov, zoomTargetFov ) ) * weapon->GetZoomTime();
 
 		zoomFov.Init( gameLocal.time, SEC2MS(t), currentFov, DefaultFov() );
 		zoomed = false;
@@ -12538,7 +12558,7 @@ void idPlayer::ReadFromSnapshot( const idBitMsgDelta &msg ) {
 		if ( def ) {		
 			// TODO: get attackers push scale?
 			InitDeathPush ( lastDamageDir, lastDamageLocation, &def->dict, 1.0f );
-			ClientDamageEffects ( def->dict, lastDamageDir, ( oldHealth - health ) * 4 );
+			ClientDamageEffects ( def->dict, lastDamageDir, ( oldHealth - health ) * 4, def->GetName() );
 		}
 
 		// gib them here
@@ -12574,7 +12594,7 @@ void idPlayer::ReadFromSnapshot( const idBitMsgDelta &msg ) {
  			// damage feedback
  			const idDeclEntityDef *def = static_cast<const idDeclEntityDef *>( declManager->DeclByIndex( DECL_ENTITYDEF, lastDamageDef, false ) );
  			if ( def ) {
- 				ClientDamageEffects ( def->dict, lastDamageDir, oldHealth - health );
+ 				ClientDamageEffects ( def->dict, lastDamageDir, oldHealth - health, def->GetName() );
  				pfl.pain = Pain( NULL, NULL, oldHealth - health, lastDamageDir, lastDamageLocation );
  				lastDmgTime = gameLocal.time;
  			} else {
@@ -13355,7 +13375,7 @@ idPlayer::ClientDamageEffects
 
 =====================
 */
-void idPlayer::ClientDamageEffects ( const idDict& damageDef, const idVec3& dir, int damage ) {
+void idPlayer::ClientDamageEffects ( const idDict& damageDef, const idVec3& dir, int damage, const char *damageDefName ) {
 	idVec3 from;
 	idVec3 localDir;
 	float  fadeDB;
@@ -13375,7 +13395,7 @@ void idPlayer::ClientDamageEffects ( const idDict& damageDef, const idVec3& dir,
 		idPlayer *p = gameLocal.GetLocalPlayer();
 
 		if ( p && ( p == this || ( p->spectating && p->spectator == entityNumber ) ) ) {
-			playerView.DamageImpulse( localDir, &damageDef, damage );
+			playerView.DamageImpulse( localDir, &damageDef, damage, damageDefName );
 		}
 // RAVEN END
 	}
@@ -13842,7 +13862,7 @@ void idPlayer::Event_DamageEffect( const char *damageDefName, idEntity* _damageF
 		idVec3 dir = (_damageFromEnt!=NULL)?(GetEyePosition()-_damageFromEnt->GetEyePosition()):viewAxis[2];
 		dir.Normalize();
 		int		damage = 1;
-		ClientDamageEffects( damageDef->dict, dir, damage );
+		ClientDamageEffects( damageDef->dict, dir, damage, damageDefName );
 		if ( !g_testDeath.GetBool() ) {
 			lastDmgTime = gameLocal.time;
 		}

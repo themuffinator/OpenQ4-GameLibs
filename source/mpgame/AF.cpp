@@ -1012,11 +1012,11 @@ void idAF::StartFromCurrentPose( int inheritVelocityTime ) {
 		return;
 	}
 
+	// reset the AF state so Start() primes gravity on first evaluation
+	physicsObj.PutToRest();
+
 	// if the ragdoll should inherit velocity from the animation
 	if ( inheritVelocityTime > 0 ) {
-
-		// make sure the ragdoll is at rest
-		physicsObj.PutToRest();
 
 		// set the pose for some time back
 		SetupPose( self, gameLocal.time - inheritVelocityTime );
