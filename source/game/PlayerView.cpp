@@ -245,6 +245,7 @@ which will determine the head kick direction
 // RAVEN BEGIN
 // jnewquist: Controller rumble
 void idPlayerView::DamageImpulse( idVec3 localKickDir, const idDict *damageDef, int damage, const char *damageDefName ) {
+
 	//
 	// double vision effect
 	//
@@ -314,10 +315,29 @@ void idPlayerView::DamageImpulse( idVec3 localKickDir, const idDict *damageDef, 
 		meleeDamageDef = idStr::Icmpn( damageDefName, "melee_", 6 ) == 0;
 	}
 
+	const char *configuredBlobMaterial = damageDef->GetString( "mtr_blob" );
+	if ( !configuredBlobMaterial[0] ) {
+		configuredBlobMaterial = damageDef->GetString( "blob_material" );
+	}
+	const float configuredBlobX = damageDef->GetFloat( "blob_x" );
+	const float configuredBlobY = damageDef->GetFloat( "blob_y" );
+	const float configuredBlobOffsetX = damageDef->GetFloat( "blob_offset_x" );
+	const float configuredBlobOffsetY = damageDef->GetFloat( "blob_offset_y" );
+	const float configuredBlobWidth = damageDef->GetFloat( "blob_width" );
+	const float configuredBlobHeight = damageDef->GetFloat( "blob_height" );
+	const float configuredBlobSize = damageDef->GetFloat( "blob_size" );
+	const bool hasBlobConfig = configuredBlobMaterial[0] ||
+		( configuredBlobX != 0.0f ) || ( configuredBlobY != 0.0f ) ||
+		( configuredBlobOffsetX != 0.0f ) || ( configuredBlobOffsetY != 0.0f ) ||
+		( configuredBlobWidth > 0.0f ) || ( configuredBlobHeight > 0.0f ) ||
+		( configuredBlobSize > 0.0f );
+
 	float blobTime = damageDef->GetFloat( "blob_time" );
-	if ( blobTime <= 0.0f && meleeDamageDef ) {
-		// Some stock melee defs leave blob_time at 0 while still defining blob visuals.
+	bool synthesizedMeleeBlob = false;
+	if ( blobTime <= 0.0f && meleeDamageDef && !hasBlobConfig ) {
+		// Compatibility fallback for melee defs that never configured blob visuals.
 		blobTime = 500.0f;
+		synthesizedMeleeBlob = true;
 	}
 
 	if ( blobTime > 0.0f ) {
@@ -325,10 +345,7 @@ void idPlayerView::DamageImpulse( idVec3 localKickDir, const idDict *damageDef, 
 		blob->startFadeTime = gameLocal.time;
 		blob->finishTime = gameLocal.time + blobTime * g_blobTime.GetFloat();
 
-		const char *materialName = damageDef->GetString( "mtr_blob" );
-		if ( !materialName[0] ) {
-			materialName = damageDef->GetString( "blob_material" );
-		}
+		const char *materialName = configuredBlobMaterial;
 
 		const idMaterial *blobMaterial = NULL;
 		if ( materialName[0] ) {
@@ -339,39 +356,47 @@ void idPlayerView::DamageImpulse( idVec3 localKickDir, const idDict *damageDef, 
 			}
 		}
 		if ( blobMaterial == NULL ) {
-			blobMaterial = declManager->FindMaterial( "textures/decals/genericdamage" );
+			if ( synthesizedMeleeBlob && bloodSprayMaterial != NULL ) {
+				blobMaterial = bloodSprayMaterial;
+			} else {
+				blobMaterial = declManager->FindMaterial( "textures/decals/genericdamage" );
+			}
 		}
 		blob->material = blobMaterial;
 
-		float blobX = damageDef->GetFloat( "blob_x" );
+		float blobX = configuredBlobX;
 		if ( blobX == 0.0f ) {
-			blobX = damageDef->GetFloat( "blob_offset_x" );
+			blobX = configuredBlobOffsetX;
 		}
 		blob->x = blobX;
 		blob->x += ( gameLocal.random.RandomInt()&63 ) - 32;
-		float blobY = damageDef->GetFloat( "blob_y" );
+		float blobY = configuredBlobY;
 		if ( blobY == 0.0f ) {
-			blobY = damageDef->GetFloat( "blob_offset_y" );
+			blobY = configuredBlobOffsetY;
 		}
 		blob->y = blobY;
 		blob->y += ( gameLocal.random.RandomInt()&63 ) - 32;
 
-		float blobWidth = damageDef->GetFloat( "blob_width" );
-		float blobHeight = damageDef->GetFloat( "blob_height" );
+		float blobWidth = configuredBlobWidth;
+		float blobHeight = configuredBlobHeight;
 		if ( blobWidth <= 0.0f || blobHeight <= 0.0f ) {
-			const float blobSize = damageDef->GetFloat( "blob_size" );
-			if ( blobSize > 0.0f ) {
+			if ( configuredBlobSize > 0.0f ) {
 				if ( blobWidth <= 0.0f ) {
-					blobWidth = blobSize;
+					blobWidth = configuredBlobSize;
 				}
 				if ( blobHeight <= 0.0f ) {
-					blobHeight = blobSize;
+					blobHeight = configuredBlobSize;
 				}
 			}
 		}
 		if ( blobWidth <= 0.0f || blobHeight <= 0.0f ) {
-			blobWidth = 400.0f;
-			blobHeight = 400.0f;
+			if ( synthesizedMeleeBlob && bloodSprayMaterial != NULL ) {
+				blobWidth = 600.0f;
+				blobHeight = 480.0f;
+			} else {
+				blobWidth = 400.0f;
+				blobHeight = 400.0f;
+			}
 		}
 		
 		float scale = ( 256 + ( ( gameLocal.random.RandomInt()&63 ) - 32 ) ) / 256.0f;
@@ -399,6 +424,8 @@ but having it localized here lets the material be pre-looked up etc.
 ==================
 */
 void idPlayerView::AddBloodSpray( float duration ) {
+	(void)duration;
+/*
 	if ( duration <= 0 || bloodSprayMaterial == NULL || g_skipViewEffects.GetBool() ) {
 		return;
 	}
@@ -433,6 +460,7 @@ void idPlayerView::AddBloodSpray( float duration ) {
 	blob->t1 = t1;
 	blob->s2 = s2;
 	blob->t2 = t2;
+*/
 }
 
 /*
@@ -553,6 +581,8 @@ void idPlayerView::SingleView( idUserInterface *hud, const renderView_t *view, i
 		return;
 	}
 
+	const bool previousUIViewportMode = renderSystem->GetUseUIViewportFor2D();
+
 	if ( !( RF_GUI_ONLY & renderFlags ) ) {
 // jmarshall
 		// jscott: portal sky rendering with KRABS
@@ -569,11 +599,14 @@ void idPlayerView::SingleView( idUserInterface *hud, const renderView_t *view, i
 	}
 
 	if ( RF_NO_GUI & renderFlags ) {
+		renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 		return;
 	}
 
 	// draw screen blobs
 	if ( !pm_thirdPerson.GetBool() && !g_skipViewEffects.GetBool() ) {
+		renderSystem->SetUseUIViewportFor2D( false );
+
 		for ( int i = 0 ; i < MAX_SCREEN_BLOBS ; i++ ) {
 			screenBlob_t	*blob = &screenBlobs[i];
 			if ( blob->finishTime <= gameLocal.time ) {
@@ -598,6 +631,7 @@ void idPlayerView::SingleView( idUserInterface *hud, const renderView_t *view, i
 			renderSystem->DrawStretchPic( 0.0f, 0.0f, 640.0f, 480.0f, 0.0f, 0.0f, 1.0f, 1.0f, tunnelMaterial );
 		}
 
+		renderSystem->SetUseUIViewportFor2D( true );
 		player->DrawHUD( hud );
 
 			
@@ -636,6 +670,7 @@ void idPlayerView::SingleView( idUserInterface *hud, const renderView_t *view, i
 
 	// test a single material drawn over everything
 	if ( g_testPostProcess.GetString()[0] ) {
+		renderSystem->SetUseUIViewportFor2D( false );
 		const idMaterial *mtr = declManager->FindMaterial( g_testPostProcess.GetString(), false );
 		if ( !mtr ) {
 			common->Printf( "Material not found.\n" );
@@ -645,6 +680,8 @@ void idPlayerView::SingleView( idUserInterface *hud, const renderView_t *view, i
 			renderSystem->DrawStretchPic( 0.0f, 0.0f, 640.0f, 480.0f, 0.0f, 0.0f, 1.0f, 1.0f, mtr );
 		}
 	}
+
+	renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 }
 
 /*
@@ -653,19 +690,23 @@ idPlayerView::DoubleVision
 ===================
 */
 void idPlayerView::DoubleVision( idUserInterface *hud, const renderView_t *view, int offset ) {
+	const bool previousUIViewportMode = renderSystem->GetUseUIViewportFor2D();
 
 	if ( !g_doubleVision.GetBool() ) {
 		SingleView( hud, view, RF_NO_GUI );
+		renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 		return;
 	}
 
 	if ( dvMaterial == NULL || dvMaterialBlend == NULL ) {
 		SingleView( hud, view, RF_NO_GUI );
+		renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 		return;
 	}
 
 	float	scale = offset * g_dvAmplitude.GetFloat() * dvScale;
 	if( scale < 0.0f ) {
+		renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 		return;
 	}
 
@@ -675,18 +716,19 @@ void idPlayerView::DoubleVision( idUserInterface *hud, const renderView_t *view,
 	float shift = scale * idMath::Sin( idMath::Sqrt ( offset ) * g_dvFrequency.GetFloat() );
 	shift = fabs( shift );
 
-	// if double vision, render to a texture
-	renderSystem->CropRenderSize( 512, 256, true );
+	// Capture from the active framebuffer extents.
+	// A forced 640x480 crop only updates a sub-rect in the RT postprocess path.
 	SingleView( hud, view, RF_NO_GUI );
 	renderSystem->CaptureRenderToImage( "_scratch" );
-	renderSystem->UnCrop();
 
 	// carry red tint if in berserk mode
 	idVec4 color(1, 1, 1, 1);
 
+	renderSystem->SetUseUIViewportFor2D( false );
 	renderSystem->SetColor4( color.x, color.y, color.z, 1.0f );
 	renderSystem->DrawStretchPic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, shift, 1, 1, 0, dvMaterial );
 	renderSystem->DrawStretchPic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 1, 1-shift, 0, dvMaterialBlend );
+	renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 }
 
 /*
@@ -741,6 +783,7 @@ idPlayerView::ScreenFade
 void idPlayerView::ScreenFade() {
 	int		msec;
 	float	t;
+	const bool previousUIViewportMode = renderSystem->GetUseUIViewportFor2D();
 
 	if ( !fadeTime ) {
 		return;
@@ -759,9 +802,12 @@ void idPlayerView::ScreenFade() {
 	}
 
 	if ( fadeColor[ 3 ] != 0.0f ) {
+		renderSystem->SetUseUIViewportFor2D( false );
 		renderSystem->SetColor4( fadeColor[ 0 ], fadeColor[ 1 ], fadeColor[ 2 ], fadeColor[ 3 ] );
 		renderSystem->DrawStretchPic( 0, 0, 640, 480, 0, 0, 1, 1, declManager->FindMaterial( "_white" ) );
 	}
+
+	renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 }
 
 /*
@@ -770,6 +816,7 @@ idPlayerView::InfluenceVision
 ===================
 */
 void idPlayerView::InfluenceVision( idUserInterface *hud, const renderView_t *view ) {
+	const bool previousUIViewportMode = renderSystem->GetUseUIViewportFor2D();
 
 	float distance = 0.0f;
 	float pct = 1.0f;
@@ -782,15 +829,19 @@ void idPlayerView::InfluenceVision( idUserInterface *hud, const renderView_t *vi
 	}
 	if ( player->GetInfluenceMaterial() ) {
 		SingleView( hud, view );
+		renderSystem->SetUseUIViewportFor2D( false );
 		renderSystem->SetColor4( 1.0f, 1.0f, 1.0f, pct );
 		renderSystem->DrawStretchPic( 0.0f, 0.0f, 640.0f, 480.0f, 0.0f, 0.0f, 1.0f, 1.0f, player->GetInfluenceMaterial() );
 	} else if ( player->GetInfluenceEntity() == NULL ) {
 		SingleView( hud, view, RF_NO_GUI );
+		renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 		return;
 	} else {
 		int offset =  25 + idMath::Sin ( gameLocal.time );
 		DoubleVision( hud, view, pct * offset );
 	}
+
+	renderSystem->SetUseUIViewportFor2D( previousUIViewportMode );
 }
 
 /*
