@@ -90,6 +90,33 @@ function Test-MesonBuildDirectory {
     return (Test-Path $coreData) -and (Test-Path $ninjaFile)
 }
 
+function Copy-GameLibrariesToOpenQ4Install {
+    param(
+        [string]$BuildDir,
+        [string]$RepoRoot
+    )
+
+    $openQ4InstallDir = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot "..\OpenQ4\install\openbase"))
+    New-Item -Path $openQ4InstallDir -ItemType Directory -Force | Out-Null
+
+    $binaries = @(
+        "game-sp_x86.dll",
+        "game-mp_x86.dll"
+    )
+
+    foreach ($binary in $binaries) {
+        $sourcePath = Join-Path $BuildDir (Join-Path "source" $binary)
+        if (-not (Test-Path $sourcePath)) {
+            throw "Expected build output '$sourcePath' was not found."
+        }
+
+        $destinationPath = Join-Path $openQ4InstallDir $binary
+        Copy-Item -Path $sourcePath -Destination $destinationPath -Force
+    }
+
+    Write-Host "Copied game libraries to '$openQ4InstallDir'."
+}
+
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptDir "..\.."))
 $defaultBuildDir = Join-Path $repoRoot "builddir"
@@ -103,6 +130,8 @@ $effectiveArgs = @($args)
 if ($effectiveArgs.Count -eq 0) {
     throw "No Meson arguments were provided to meson_setup.ps1."
 }
+
+$isCompileCommand = $effectiveArgs[0] -eq "compile"
 
 if ($effectiveArgs.Length -gt 0 -and ($effectiveArgs[0] -eq "compile" -or $effectiveArgs[0] -eq "install")) {
     $buildInfo = Get-BuildDirInfo -MesonArgs $effectiveArgs -DefaultBuildDir $defaultBuildDir
@@ -138,4 +167,10 @@ if ($effectiveArgs.Length -gt 0 -and ($effectiveArgs[0] -eq "compile" -or $effec
 
 Invoke-Meson -MesonArgs $effectiveArgs -VsDevCmdPath $vsDevCmd
 $exitCode = [int]$LASTEXITCODE
+
+if ($exitCode -eq 0 -and $isCompileCommand) {
+    $compileBuildInfo = Get-BuildDirInfo -MesonArgs $effectiveArgs -DefaultBuildDir $defaultBuildDir
+    Copy-GameLibrariesToOpenQ4Install -BuildDir $compileBuildInfo.BuildDir -RepoRoot $repoRoot
+}
+
 exit $exitCode

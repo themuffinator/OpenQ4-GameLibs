@@ -37,14 +37,14 @@ This file describes project goals, rules, and upstream credits for anyone workin
 
 **Cross-Repo Workflow (Agent-Only)**
 - OpenQ4 (`tools/build/meson_setup.ps1`) can trigger this repo's build during OpenQ4 compile runs when `OPENQ4_BUILD_GAMELIBS=1`.
-- OpenQ4 `src/game` is treated as a synchronized mirror of `OpenQ4-GameLibs/source/game`; apply canonical game-library source edits here first.
+- OpenQ4 `src/game` is treated as a synchronized mirror of `OpenQ4-GameLibs/src/game`; apply canonical game-library source edits here first.
 
 **Local References (Agent-Only, Not Included In Repo)**
 - OpenQ4 engine project: `E:\Repositories\OpenQ4`
-- Quake 4 SDK: `E:\_SOURCE\_CODE\Quake4-1.4.2-SDK`
-- Upstream engine base (local folder name retained): `E:\_SOURCE\_CODE\Quake4Doom-master`
-- Quake 4 BSE (Basic Set of Effects): `E:\_SOURCE\_CODE\Quake4BSE-master`
-- Quake 4 engine decompiled (Hex-Rays): `E:\_SOURCE\_CODE\Quake4Decompiled-main`
+- Quake 4 SDK: `E:\_src\\_CODE\Quake4-1.4.2-SDK`
+- Upstream engine base (local folder name retained): `E:\_src\\_CODE\Quake4Doom-master`
+- Quake 4 BSE (Basic Set of Effects): `E:\_src\\_CODE\Quake4BSE-master`
+- Quake 4 engine decompiled (Hex-Rays): `E:\_src\\_CODE\Quake4Decompiled-main`
 
 **Upstream Credits**
 - Upstream Quake4SDK (Quake 4 v1.4.2 SDK baseline).

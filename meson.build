@@ -4,7 +4,7 @@ project(
   version : '0.0.1',
   default_options : [
     'b_vscrt=static_from_buildtype',
-    'cpp_std=vc++latest',
+    'cpp_std=vc++17',
     'warning_level=0',
   ],
 )

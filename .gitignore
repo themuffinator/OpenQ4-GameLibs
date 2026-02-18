@@ -42,9 +42,9 @@ compile_commands.json
 
 # Legacy Visual Studio generated files
 Win32/
-source/.vs/
-source/Backup/
-source/UpgradeLog.htm
-source/*.vcxproj
-source/*.vcxproj.filters
-source/*.vcxproj.user
+src/.vs/
+src/Backup/
+src/UpgradeLog.htm
+src/*.vcxproj
+src/*.vcxproj.filters
+src/*.vcxproj.user
