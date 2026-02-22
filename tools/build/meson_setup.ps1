@@ -96,7 +96,7 @@ function Copy-GameLibrariesToOpenQ4Install {
         [string]$RepoRoot
     )
 
-    $openQ4InstallDir = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot "..\OpenQ4\install\openbase"))
+    $openQ4InstallDir = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot "..\OpenQ4\.install\openq4"))
     New-Item -Path $openQ4InstallDir -ItemType Directory -Force | Out-Null
 
     $binaries = @(
@@ -145,8 +145,7 @@ if ($effectiveArgs.Length -gt 0 -and ($effectiveArgs[0] -eq "compile" -or $effec
             $repoRoot,
             "--backend",
             "ninja",
-            "--buildtype",
-            "release",
+            "--buildtype=release",
             "--vsenv"
         )
         Invoke-Meson -MesonArgs $setupArgs -VsDevCmdPath $vsDevCmd
