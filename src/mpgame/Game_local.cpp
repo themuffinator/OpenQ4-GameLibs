@@ -3990,11 +3990,6 @@ void idGameLocal::CalcFov( float base_fov, float &fov_x, float &fov_y ) const {
 	float	y;
 	const float referenceAspect = 4.0f / 3.0f;
 	const float aspectRatio = idMath::ClampFloat( 0.1f, 10.0f, GetScreenAspectRatio() );
-	
-	if ( !sys->FPU_StackIsEmpty() ) {
-		Printf( sys->FPU_GetState() );
-		Error( "idGameLocal::CalcFov: FPU stack not empty" );
-	}
 
 // RAVEN BEGIN
 // jnewquist: Option to adjust vertical fov instead of horizontal for non 4:3 modes
