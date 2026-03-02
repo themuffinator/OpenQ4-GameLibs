@@ -265,10 +265,6 @@ class ThreadedAlloc;		// class that is only used to expand the AutoCrit template
 // id lib
 #include "../idlib/Lib.h"
 
-#if !defined( Q4SDK ) && defined( __WITH_PB__ )
-	#include "../punkbuster/pbcommon.h"
-#endif
-
 // RAVEN BEGIN
 // jsinger: added to allow support for serialization/deserialization of binary decls
 #ifdef RV_BINARYDECLS
