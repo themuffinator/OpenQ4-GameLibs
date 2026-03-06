@@ -3964,15 +3964,6 @@ float idGameLocal::GetScreenAspectRatio( void ) const {
 		if ( screenWidth > 0 && screenHeight > 0 ) {
 			return ( float )screenWidth / ( float )screenHeight;
 		}
-
-		switch ( cvarSystem->GetCVarInteger( "r_aspectRatio" ) ) {
-		case 1:
-			return 16.0f / 9.0f;
-		case 2:
-			return 16.0f / 10.0f;
-		default:
-			break;
-		}
 	}
 
 	return 4.0f / 3.0f;

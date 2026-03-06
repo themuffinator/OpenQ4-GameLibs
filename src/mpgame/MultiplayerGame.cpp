@@ -100,6 +100,51 @@ static idStr GetMPMenuModelCVar( const int menuModelTeam ) {
 	return "ui_model";
 }
 
+enum {
+	MP_MENU_ASPECT_OTHER = 0,
+	MP_MENU_ASPECT_16_9 = 1,
+	MP_MENU_ASPECT_16_10 = 2
+};
+
+static int ClassifyMPMenuAspectGroup( int width, int height ) {
+	if ( width <= 0 || height <= 0 ) {
+		return MP_MENU_ASPECT_OTHER;
+	}
+
+	const float aspect = static_cast<float>( width ) / static_cast<float>( height );
+	if ( idMath::Fabs( aspect - ( 16.0f / 10.0f ) ) < 0.02f ) {
+		return MP_MENU_ASPECT_16_10;
+	}
+	if ( idMath::Fabs( aspect - ( 16.0f / 9.0f ) ) < 0.02f ) {
+		return MP_MENU_ASPECT_16_9;
+	}
+
+	return MP_MENU_ASPECT_OTHER;
+}
+
+static int GetMPMenuAspectGroupForMode( int mode ) {
+	if ( mode == -1 ) {
+		return ClassifyMPMenuAspectGroup(
+			cvarSystem->GetCVarInteger( "r_customWidth" ),
+			cvarSystem->GetCVarInteger( "r_customHeight" ) );
+	}
+
+	switch ( mode ) {
+	case 0:
+	case 1:
+	case 2:
+	case 3:
+	case 6:
+	case 8:
+	case 10:
+		return MP_MENU_ASPECT_16_9;
+	case 4:
+		return MP_MENU_ASPECT_16_10;
+	default:
+		return MP_MENU_ASPECT_OTHER;
+	}
+}
+
 static const idDeclEntityDef* FindMPMenuModelDef( void ) {
 	const idDeclEntityDef* def = static_cast<const idDeclEntityDef*>( declManager->FindType( DECL_ENTITYDEF, "player_marine_mp_ui", false ) );
 	if ( !def ) {
@@ -4428,12 +4473,22 @@ const char* idMultiplayerGame::HandleGuiCommands( const char *_menuCommand ) {
 
 // RAVEN BEGIN
 // mekberg: set the r_mode.
-			cvarSystem->SetCVarInteger( "r_aspectRatio", 0 );
-			currentGui->SetStateInt( "r_aspectRatio", 0 );
-			currentGui->HandleNamedEvent( "forceAspect0" );
+			const int rMode = common->GetRModeForMachineSpec ( cvarSystem->GetCVarInteger( "com_machineSpec" ) );
+			cvarSystem->SetCVarInteger( "r_mode", rMode );
+			currentGui->SetStateInt( "r_aspectRatio", GetMPMenuAspectGroupForMode( rMode ) );
+			switch ( currentGui->State().GetInt( "r_aspectRatio" ) ) {
+			case MP_MENU_ASPECT_16_9:
+				currentGui->HandleNamedEvent( "forceAspect1" );
+				break;
+			case MP_MENU_ASPECT_16_10:
+				currentGui->HandleNamedEvent( "forceAspect2" );
+				break;
+			default:
+				currentGui->HandleNamedEvent( "forceAspect0" );
+				break;
+			}
 			currentGui->SetStateInt( "com_machineSpec", cvarSystem->GetCVarInteger( "com_machineSpec" ) );
 			currentGui->StateChanged( gameLocal.realClientTime );
-			cvarSystem->SetCVarInteger( "r_mode", common->GetRModeForMachineSpec ( cvarSystem->GetCVarInteger( "com_machineSpec" ) ) );
 			common->SetDesiredMachineSpec( cvarSystem->GetCVarInteger( "com_machineSpec" ) );
 // RAVEN END
 
