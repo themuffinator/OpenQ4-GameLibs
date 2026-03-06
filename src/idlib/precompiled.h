@@ -254,6 +254,9 @@ class ThreadedAlloc;		// class that is only used to expand the AutoCrit template
 #include <time.h>
 #include <ctype.h>
 #include <typeinfo>
+#include <stdint.h>
+
+#define ID_TIME_T time_t
 #include <errno.h>
 #include <math.h>
 

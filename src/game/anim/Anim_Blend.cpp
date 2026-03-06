@@ -2821,7 +2821,7 @@ bool idDeclModelDef::ParseAnim( idLexer &src, int numDefaultAnims ) {
 idDeclModelDef::Parse
 ================
 */
-bool idDeclModelDef::Parse( const char *text, const int textLength ) {
+bool idDeclModelDef::Parse( const char *text, const int textLength, bool noCaching ) {
 	int					i;
 	int					num;
 	idStr				filename;
@@ -2836,17 +2836,24 @@ bool idDeclModelDef::Parse( const char *text, const int textLength ) {
 	jointHandle_t		jointnum;
 	idList<jointHandle_t> jointList;
 	int					numDefaultAnims;
+	const idDeclModelDef *inheritedModelDef;
+	bool				sawSkin;
+	bool				sawOffset;
 // RAVEN BEGIN
 // bdube: attachments
 	idList<idStr>		attachJoints;
 // RAVEN END
 
 	TIME_THIS_SCOPE( __FUNCLINE__);
+	(void)noCaching;
 	src.LoadMemory( text, textLength, GetFileName(), GetLineNum() );
 	src.SetFlags( DECL_LEXER_FLAGS );
 	src.SkipUntilString( "{" );
 
 	numDefaultAnims = 0;
+	inheritedModelDef = NULL;
+	sawSkin = false;
+	sawOffset = false;
 	while( 1 ) {
 		if ( !src.ReadToken( &token ) ) {
 			break;
@@ -2872,6 +2879,7 @@ bool idDeclModelDef::Parse( const char *text, const int textLength ) {
 				return false;
 			} else {
 				CopyDecl( copy );
+				inheritedModelDef = copy;
 				numDefaultAnims = anims.Num();
 			}
 		} else if ( token == "skin" ) {
@@ -2880,6 +2888,7 @@ bool idDeclModelDef::Parse( const char *text, const int textLength ) {
 				MakeDefault();
 				return false;
 			}
+			sawSkin = true;
 			skin = declManager->FindSkin( token2 );
 			if ( !skin ) {
 				src.Warning( "Skin '%s' not found", token2.c_str() );
@@ -2980,6 +2989,7 @@ bool idDeclModelDef::Parse( const char *text, const int textLength ) {
 				MakeDefault();
 				return false;
 			}
+			sawOffset = true;
 		} else if ( token == "channel" ) {
 			if ( !modelHandle ) {
 				src.Warning( "Must specify mesh before defining channels" );
@@ -3055,6 +3065,40 @@ bool idDeclModelDef::Parse( const char *text, const int textLength ) {
 	// shrink the anim list down to save space
 	anims.SetGranularity( 1 );
 	anims.SetNum( anims.Num() );
+
+	if ( !modelHandle && inheritedModelDef && inheritedModelDef->ModelHandle() ) {
+		modelHandle = inheritedModelDef->ModelHandle();
+
+		if ( joints.Num() == 0 ) {
+			joints = inheritedModelDef->Joints();
+		}
+
+		if ( jointParents.Num() == 0 && inheritedModelDef->JointParents() ) {
+			jointParents.SetNum( inheritedModelDef->NumJoints() );
+			SIMDProcessor->Memcpy( jointParents.Ptr(), inheritedModelDef->JointParents(), jointParents.Num() * sizeof( jointParents[0] ) );
+		}
+
+		for ( i = 0; i < ANIM_NumAnimChannels; i++ ) {
+			if ( channelJoints[ i ].Num() == 0 && inheritedModelDef->NumJointsOnChannel( i ) > 0 ) {
+				channelJoints[ i ].SetNum( inheritedModelDef->NumJointsOnChannel( i ) );
+				SIMDProcessor->Memcpy( channelJoints[ i ].Ptr(), inheritedModelDef->GetChannelJoints( i ), channelJoints[ i ].Num() * sizeof( channelJoints[ i ][0] ) );
+			}
+		}
+
+		if ( !skin && !sawSkin ) {
+			skin = inheritedModelDef->GetDefaultSkin();
+		}
+
+		if ( !sawOffset ) {
+			offset = inheritedModelDef->GetVisualOffset();
+		}
+	}
+
+	if ( !modelHandle ) {
+		src.Warning( "Model definition '%s' has no mesh and failed to inherit one", GetName() );
+		MakeDefault();
+		return false;
+	}
 
 	return true;
 }
@@ -3648,6 +3692,12 @@ idRenderModel *idAnimator::SetModel( const char *modelname ) {
 	}
 	
 	idRenderModel *renderModel = modelDef->ModelHandle();
+	if ( !renderModel ) {
+		// Recover from stale parsed decl state by reloading the source file once.
+		declManager->ReloadFile( modelDef->GetFileName(), true );
+		modelDef = static_cast<const idDeclModelDef *>( declManager->FindType( DECL_MODELDEF, modelname, false ) );
+		renderModel = modelDef ? modelDef->ModelHandle() : NULL;
+	}
 	if ( !renderModel ) {
 		modelDef = NULL;
 		return NULL;

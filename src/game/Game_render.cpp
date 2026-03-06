@@ -3,8 +3,7 @@
 
 
 #include "Game_local.h"
-#include "../renderer/Image.h"
-#include "../renderer/RenderTexture.h"
+#include "../renderer/ImageOpts.h"
 
 idCVar g_renderCasUpscale("g_renderCasUpscale", "1", CVAR_BOOL, "jmarshall: toggles cas upscaling");
 
@@ -59,6 +58,8 @@ void idGameLocal::ShutdownGameRenderSystem( void ) {
 	gameRender.smaaBlendPostProcessMaterial = NULL;
 	gameRender.postProcessAvailable = false;
 	gameRender.smaaAvailable = false;
+	gameRender.renderTargetWidth = 0;
+	gameRender.renderTargetHeight = 0;
 	gameRender.videoRestartCount = ( renderSystem != NULL ) ? renderSystem->GetVideoRestartCount() : 0;
 }
 
@@ -169,6 +170,9 @@ void idGameLocal::InitGameRenderSystem(void) {
 	if ( requestedMsaaSamples > 0 ) {
 		common->Printf( "MSAA requested %d samples\n", requestedMsaaSamples );
 	}
+
+	gameRender.renderTargetWidth = renderSystem->GetScreenWidth();
+	gameRender.renderTargetHeight = renderSystem->GetScreenHeight();
 }
 
 /*
@@ -189,6 +193,9 @@ void idGameLocal::ResizeRenderTextures(int width, int height) {
 			renderSystem->ResizeRenderTexture( gameRender.postProcessRT[i], width, height );
 		}
 	}
+
+	gameRender.renderTargetWidth = width;
+	gameRender.renderTargetHeight = height;
 }
 
 /*
@@ -220,12 +227,8 @@ void idGameLocal::RenderScene(const renderView_t *view, idRenderWorld *renderWor
 		gameRender.forwardRenderPassRT != NULL &&
 		gameRender.forwardRenderPassResolvedRT != NULL &&
 		gameRender.postProcessRT[0] != NULL ) {
-		if ( gameRender.forwardRenderPassRT->GetWidth() != screenWidth ||
-			gameRender.forwardRenderPassRT->GetHeight() != screenHeight ||
-			gameRender.forwardRenderPassResolvedRT->GetWidth() != screenWidth ||
-			gameRender.forwardRenderPassResolvedRT->GetHeight() != screenHeight ||
-			gameRender.postProcessRT[0]->GetWidth() != screenWidth ||
-			gameRender.postProcessRT[0]->GetHeight() != screenHeight ) {
+		if ( gameRender.renderTargetWidth != screenWidth ||
+			gameRender.renderTargetHeight != screenHeight ) {
 			needsTargetReinit = true;
 		}
 	}

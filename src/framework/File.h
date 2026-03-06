@@ -37,7 +37,7 @@ public:
 							// Returns the length of the file.
 	virtual int				Length( void ) = 0;
 							// Return a time value for reload operations.
-	virtual unsigned int	Timestamp( void ) = 0;
+	virtual ID_TIME_T		Timestamp( void ) = 0;
 							// Returns offset in file.
 	virtual int				Tell( void ) = 0;
 							// Forces flush on files being writting to.
@@ -114,7 +114,7 @@ public:
 							// Returns the length of the file.
 	virtual int				Length( void ) { return( 0 ); }
 							// Return a time value for reload operations.
-	virtual unsigned int	Timestamp( void ) { return( 0 ); }
+	virtual ID_TIME_T		Timestamp( void ) { return( 0 ); }
 							// Returns offset in file.
 	virtual int				Tell( void ) { return( 0 ); }
 							// Forces flush on files being writting to.
@@ -192,7 +192,7 @@ public:
 	virtual int				Read( void *buffer, int len );
 	virtual int				Write( const void *buffer, int len );
 	virtual int				Length( void );
-	virtual unsigned int	Timestamp( void );
+	virtual ID_TIME_T		Timestamp( void );
 	virtual int				Tell( void );
 	virtual void			ForceFlush( void );
 	virtual void			Flush( void );
@@ -237,7 +237,7 @@ public:
 	virtual int				Read( void *buffer, int len );
 	virtual int				Write( const void *buffer, int len );
 	virtual int				Length( void );
-	virtual unsigned int	Timestamp( void );
+	virtual ID_TIME_T		Timestamp( void );
 	virtual int				Tell( void );
 	virtual void			ForceFlush( void );
 	virtual void			Flush( void );
@@ -264,7 +264,7 @@ public:
 	virtual int				Read( void *buffer, int len );
 	virtual int				Write( const void *buffer, int len );
 	virtual int				Length( void );
-	virtual unsigned int	Timestamp( void );
+	virtual ID_TIME_T		Timestamp( void );
 	virtual int				Tell( void );
 	virtual void			ForceFlush( void );
 	virtual void			Flush( void );
@@ -349,7 +349,7 @@ public:
 	virtual int				Read( void *buffer, int len );
 	virtual int				Write( const void *buffer, int len );
 	virtual int				Length( void );
-	virtual unsigned int	Timestamp( void );
+	virtual ID_TIME_T		Timestamp( void );
 	virtual int				Tell( void );
 	virtual void			ForceFlush( void );
 	virtual void			Flush( void );

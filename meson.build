@@ -9,4 +9,4 @@ project(
   ],
 )
 
-subdir('source')
+subdir('src')

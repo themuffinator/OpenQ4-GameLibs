@@ -105,7 +105,7 @@ function Copy-GameLibrariesToOpenQ4Install {
     )
 
     foreach ($binary in $binaries) {
-        $sourcePath = Join-Path $BuildDir (Join-Path "source" $binary)
+        $sourcePath = Join-Path $BuildDir (Join-Path "src" $binary)
         if (-not (Test-Path $sourcePath)) {
             throw "Expected build output '$sourcePath' was not found."
         }

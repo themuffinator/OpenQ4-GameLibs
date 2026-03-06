@@ -76,6 +76,7 @@ public:
 	virtual void			RepeaterSendReliableMessageExcluding( int excluding, const idBitMsg &msg, bool inhibitHeader = false, int clientNum = -1 ); // NOTE: Message is sent to all viewers if clientNum is -1; excluding is used for playback.
 	virtual void			ServerSendReliableMessageExcluding( int clientNum, const idBitMsg &msg, bool inhibitRepeater = false );
 	virtual int				ServerGetClientPing( int clientNum );
+	virtual int				ServerGetClientPrediction( int clientNum );
 	virtual int				ServerGetClientTimeSinceLastPacket( int clientNum );
 	virtual int				ServerGetClientTimeSinceLastInput( int clientNum );
 	virtual int				ServerGetClientOutgoingRate( int clientNum );

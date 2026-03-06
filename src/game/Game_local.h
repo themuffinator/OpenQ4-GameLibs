@@ -335,6 +335,8 @@ struct rvmGameRender_t {
 	const idMaterial* smaaBlendPostProcessMaterial;
 	bool postProcessAvailable;
 	bool smaaAvailable;
+	int renderTargetWidth;
+	int renderTargetHeight;
 	int videoRestartCount;
 };
 // jmarshall end
