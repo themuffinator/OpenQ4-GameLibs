@@ -23,6 +23,17 @@
 
 //#define UI_DEBUG	1
 
+template< typename ManagerT >
+static auto CollisionModelDebugOutputCompat( ManagerT* manager, const idVec3& viewOrigin, const idMat3& viewAxis, int )
+	-> decltype( manager->DebugOutput( viewOrigin, viewAxis ), void() ) {
+	manager->DebugOutput( viewOrigin, viewAxis );
+}
+
+template< typename ManagerT >
+static void CollisionModelDebugOutputCompat( ManagerT* manager, const idVec3& viewOrigin, const idMat3& viewAxis, long ) {
+	manager->DebugOutput( viewOrigin );
+}
+
 #ifdef GAME_DLL
 
 idSys *						sys = NULL;
@@ -4775,7 +4786,7 @@ void idGameLocal::RunDebugInfo( void ) {
 
 // collision map debug output
 // jmarshall - debug output
-	collisionModelManager->DebugOutput( player->GetEyePosition() );
+	CollisionModelDebugOutputCompat( collisionModelManager, player->GetEyePosition(), mat3_identity, 0 );
 // jmarshall end
 
 // RAVEN BEGIN
