@@ -3095,8 +3095,10 @@ bool idDeclModelDef::Parse( const char *text, const int textLength, bool noCachi
 	}
 
 	if ( !modelHandle ) {
-		src.Warning( "Model definition '%s' has no mesh and failed to inherit one", GetName() );
-		MakeDefault();
+		if ( GetState() != DS_DEFAULTED ) {
+			src.Warning( "Model definition '%s' has no mesh and failed to inherit one", GetName() );
+			MakeDefault();
+		}
 		return false;
 	}
 
