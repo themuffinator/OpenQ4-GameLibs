@@ -15,6 +15,22 @@
 #include "client/ClientEffect.h"
 //#include "../renderer/tr_local.h"
 
+int rvWeapon::GetFirstPersonShadowSuppressLightId( void ) const {
+	if ( owner == NULL ) {
+		return 0;
+	}
+
+	const bool flashlightHandleActive =
+		lightHandles[WPLIGHT_FLASHLIGHT] != -1 ||
+		lightHandles[WPLIGHT_FLASHLIGHT_WORLD] != -1;
+	const bool flashlightCastsShadow =
+		!lights[WPLIGHT_FLASHLIGHT].noShadows ||
+		!lights[WPLIGHT_FLASHLIGHT_WORLD].noShadows;
+	const bool flashlightActive = flashlightHandleActive && flashlightCastsShadow;
+	const int lightIndex = flashlightActive ? WPLIGHT_FLASHLIGHT : WPLIGHT_MUZZLEFLASH;
+	return lightIndex * 100 + owner->entityNumber;
+}
+
 /***********************************************************************
 
   rvViewWeapon  
@@ -1043,6 +1059,8 @@ void rvWeapon::Think ( void ) {
 	// deal with the third-person visible world model 
 	// don't show shadows of the world model in first person
 	if ( worldModel && worldModel->GetRenderEntity() ) {
+		const int suppressShadowLightId = GetFirstPersonShadowSuppressLightId();
+
 		// always show your own weapon
 		if( owner->entityNumber == gameLocal.localClientNum ) {
 			worldModel->GetRenderEntity()->suppressLOD = 1;
@@ -1053,14 +1071,15 @@ void rvWeapon::Think ( void ) {
 		if ( gameLocal.IsMultiplayer() && g_skipPlayerShadowsMP.GetBool() ) {
 			// Disable all weapon shadows for the local client
 			worldModel->GetRenderEntity()->suppressShadowInViewID	= gameLocal.localClientNum+1;
-			worldModel->GetRenderEntity()->suppressShadowInLightID = WPLIGHT_MUZZLEFLASH * 100 + owner->entityNumber;
+			worldModel->GetRenderEntity()->suppressShadowInLightID = suppressShadowLightId;
 		} else if ( gameLocal.isMultiplayer || g_showPlayerShadow.GetBool() || pm_thirdPerson.GetBool() ) {
 			// Show all weapon shadows
 			worldModel->GetRenderEntity()->suppressShadowInViewID	= 0;
+			worldModel->GetRenderEntity()->suppressShadowInLightID = suppressShadowLightId;
 		} else {
 			// Only show weapon shadows for other clients
 			worldModel->GetRenderEntity()->suppressShadowInViewID	= owner->entityNumber+1;
-			worldModel->GetRenderEntity()->suppressShadowInLightID = WPLIGHT_MUZZLEFLASH * 100 + owner->entityNumber;
+			worldModel->GetRenderEntity()->suppressShadowInLightID = suppressShadowLightId;
 		}
 	}
 
@@ -1124,7 +1143,7 @@ void rvWeapon::InitWorldModel( void ) {
 		if ( worldModelRenderEntity ) {
 			worldModelRenderEntity->suppressSurfaceInViewID = owner->entityNumber+1;
 			worldModelRenderEntity->suppressShadowInViewID = owner->entityNumber+1;
-			worldModelRenderEntity->suppressShadowInLightID = WPLIGHT_MUZZLEFLASH * 100 + owner->entityNumber;
+			worldModelRenderEntity->suppressShadowInLightID = GetFirstPersonShadowSuppressLightId();
 		}
 	} else {
 		ent->SetModel( "" );

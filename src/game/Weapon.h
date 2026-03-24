@@ -269,6 +269,7 @@ public:
 
 	void				UpdateGUI					( void );
 	void				UpdateCrosshairGUI			( idUserInterface* gui ) const;
+	int					GetFirstPersonShadowSuppressLightId( void ) const;
 
 	idMat3				ForeshortenAxis				( const idMat3& axis ) const;
 

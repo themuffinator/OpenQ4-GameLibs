@@ -332,12 +332,14 @@ struct rvmGameRender_t {
 	const idMaterial* blackPostProcessMaterial;
 	const idMaterial* resolvePostProcessMaterial;
 	const idMaterial* smaaEdgePostProcessMaterial;
+	const idMaterial* smaaWeightsPostProcessMaterial;
 	const idMaterial* smaaBlendPostProcessMaterial;
 	bool postProcessAvailable;
 	bool smaaAvailable;
 	int renderTargetWidth;
 	int renderTargetHeight;
 	int videoRestartCount;
+	int postAAWarningState;
 };
 // jmarshall end
 

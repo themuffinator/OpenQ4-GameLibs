@@ -4,15 +4,7 @@
 #include "Game_local.h"
 
 // RAVEN BEGIN
-#if defined( __has_include )
-	#if __has_include( "../bse_api/BSEInterface.h" )
-		#include "../bse_api/BSEInterface.h"
-	#else
-		#include "../bse/BSEInterface.h"
-	#endif
-#else
-	#include "../bse/BSEInterface.h"
-#endif
+#include "../bse/BSEInterface.h"
 #include "Projectile.h"
 #include "client/ClientEffect.h"
 #include "ai/AI.h"
@@ -302,10 +294,14 @@ void idGameLocal::Clear( void ) {
 	gameRender.blackPostProcessMaterial = NULL;
 	gameRender.resolvePostProcessMaterial = NULL;
 	gameRender.smaaEdgePostProcessMaterial = NULL;
+	gameRender.smaaWeightsPostProcessMaterial = NULL;
 	gameRender.smaaBlendPostProcessMaterial = NULL;
 	gameRender.postProcessAvailable = false;
 	gameRender.smaaAvailable = false;
+	gameRender.renderTargetWidth = 0;
+	gameRender.renderTargetHeight = 0;
 	gameRender.videoRestartCount = 0;
+	gameRender.postAAWarningState = 0;
 // RAVEN BEGIN
 // bdube: not using id effects
 //	testFx = NULL;

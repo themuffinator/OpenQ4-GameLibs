@@ -4501,7 +4501,7 @@ void idEntity::ShowSurface ( const char* surface ) {
 		return;
 	}
 
-//	renderEntity.suppressSurfaceMask &= (~renderEntity.hModel->GetSurfaceMask ( surface ));
+	renderEntity.suppressSurfaceMask &= (~renderEntity.hModel->GetSurfaceMask ( surface ));
 }
 
 /*
@@ -4523,7 +4523,7 @@ void idEntity::HideSurface ( const char* surface ) {
 		return;
 	}
 
-	//renderEntity.suppressSurfaceMask |= renderEntity.hModel->GetSurfaceMask ( surface ) ;
+	renderEntity.suppressSurfaceMask |= renderEntity.hModel->GetSurfaceMask ( surface );
 }
 
 /*

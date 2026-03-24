@@ -9752,12 +9752,12 @@ void idPlayer::Think( void ) {
 
 	DrawShadow( headRenderEnt );
 
-	// never cast shadows from our first-person muzzle flashes
-	// FIXME: get first person flashlight into this 
-	renderEntity.suppressShadowInLightID = rvWeapon::WPLIGHT_MUZZLEFLASH * 100 + entityNumber;
- 	if ( headRenderEnt ) {
- 		headRenderEnt->suppressShadowInLightID = rvWeapon::WPLIGHT_MUZZLEFLASH * 100 + entityNumber;
-   	}
+	// Never cast shadows from our first-person muzzle flash or flashlight.
+	const int suppressShadowLightId = weapon ? weapon->GetFirstPersonShadowSuppressLightId() : rvWeapon::WPLIGHT_MUZZLEFLASH * 100 + entityNumber;
+	renderEntity.suppressShadowInLightID = suppressShadowLightId;
+	if ( headRenderEnt ) {
+ 		headRenderEnt->suppressShadowInLightID = suppressShadowLightId;
+  	}
 
  	if ( !g_stopTime.GetBool() ) {
 		UpdateAnimation();
@@ -12063,12 +12063,12 @@ void idPlayer::LocalClientPredictionThink( void ) {
 
 	DrawShadow( headRenderEnt );
 
-	// never cast shadows from our first-person muzzle flashes
-	// FIXME: flashlight too
-	renderEntity.suppressShadowInLightID = rvWeapon::WPLIGHT_MUZZLEFLASH * 100 + entityNumber;
- 	if ( headRenderEnt ) {
+	// Never cast shadows from our first-person muzzle flash or flashlight.
+	const int suppressShadowLightId = weapon ? weapon->GetFirstPersonShadowSuppressLightId() : rvWeapon::WPLIGHT_MUZZLEFLASH * 100 + entityNumber;
+	renderEntity.suppressShadowInLightID = suppressShadowLightId;
+	if ( headRenderEnt ) {
  		headRenderEnt->suppressShadowInLightID = renderEntity.suppressShadowInLightID;
-   	}
+  	}
 
  	if ( !gameLocal.inCinematic ) {
  		UpdateAnimation();
@@ -12240,12 +12240,12 @@ void idPlayer::NonLocalClientPredictionThink( void ) {
 
 	DrawShadow( headRenderEnt );
 
-	// never cast shadows from our first-person muzzle flashes
-	// FIXME: flashlight too
-	renderEntity.suppressShadowInLightID = rvWeapon::WPLIGHT_MUZZLEFLASH * 100 + entityNumber;
- 	if ( headRenderEnt ) {
+	// Never cast shadows from our first-person muzzle flash or flashlight.
+	const int suppressShadowLightId = weapon ? weapon->GetFirstPersonShadowSuppressLightId() : rvWeapon::WPLIGHT_MUZZLEFLASH * 100 + entityNumber;
+	renderEntity.suppressShadowInLightID = suppressShadowLightId;
+	if ( headRenderEnt ) {
  		headRenderEnt->suppressShadowInLightID = renderEntity.suppressShadowInLightID;
-   	}
+  	}
 
  	if ( !gameLocal.inCinematic ) {
  		UpdateAnimation();

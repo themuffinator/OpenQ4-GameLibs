@@ -167,7 +167,7 @@ if ($effectiveArgs.Length -gt 0 -and ($effectiveArgs[0] -eq "compile" -or $effec
 Invoke-Meson -MesonArgs $effectiveArgs -VsDevCmdPath $vsDevCmd
 $exitCode = [int]$LASTEXITCODE
 
-if ($exitCode -eq 0 -and $isCompileCommand) {
+if ($exitCode -eq 0 -and $isCompileCommand -and $env:OPENQ4_COPY_GAMELIBS_TO_INSTALL -eq "1") {
     $compileBuildInfo = Get-BuildDirInfo -MesonArgs $effectiveArgs -DefaultBuildDir $defaultBuildDir
     Copy-GameLibrariesToOpenQ4Install -BuildDir $compileBuildInfo.BuildDir -RepoRoot $repoRoot
 }

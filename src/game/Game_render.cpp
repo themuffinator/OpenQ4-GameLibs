@@ -7,12 +7,89 @@
 
 idCVar g_renderCasUpscale("g_renderCasUpscale", "1", CVAR_BOOL, "jmarshall: toggles cas upscaling");
 
+enum openq4PostAAWarningState_t {
+	OPENQ4_POST_AA_WARNING_NONE = 0,
+	OPENQ4_POST_AA_WARNING_UNAVAILABLE,
+	OPENQ4_POST_AA_WARNING_POST_LIGHTING_STACK
+};
+
+static bool IsUsablePostProcessMaterial( const idMaterial* material ) {
+	return material != NULL && !material->TestMaterialFlag( MF_DEFAULTED );
+}
+
+static bool ValidateSMAAMaterial( const idMaterial* material, const char* materialName ) {
+	if ( !IsUsablePostProcessMaterial( material ) ) {
+		return false;
+	}
+
+	if ( material->GetNumStages() <= 0 ) {
+		common->Warning( "SMAA material '%s' has no stages; disabling SMAA.", materialName );
+		return false;
+	}
+
+	if ( !renderSystem->ValidateMaterialArbPrograms( material ) ) {
+		common->Warning( "SMAA material '%s' uses an invalid or unavailable shader program; disabling SMAA.", materialName );
+		return false;
+	}
+
+	return true;
+}
+
+static bool EvaluateSMAAAvailability( rvmGameRender_t& gameRender ) {
+	return ValidateSMAAMaterial(
+		gameRender.smaaEdgePostProcessMaterial,
+		( gameRender.smaaEdgePostProcessMaterial != NULL ) ? gameRender.smaaEdgePostProcessMaterial->GetName() : "postprocess/smaa_edge" ) &&
+		ValidateSMAAMaterial(
+			gameRender.smaaWeightsPostProcessMaterial,
+			( gameRender.smaaWeightsPostProcessMaterial != NULL ) ? gameRender.smaaWeightsPostProcessMaterial->GetName() : "postprocess/smaa_weights" ) &&
+		ValidateSMAAMaterial(
+			gameRender.smaaBlendPostProcessMaterial,
+			( gameRender.smaaBlendPostProcessMaterial != NULL ) ? gameRender.smaaBlendPostProcessMaterial->GetName() : "postprocess/smaa_blend" ) &&
+		renderSystem->ValidateSMAALookupTextures() &&
+		( gameRender.postProcessRT[0] != NULL ) &&
+		( gameRender.postProcessRT[1] != NULL );
+}
+
+static void UpdatePostAAWarningState( rvmGameRender_t& gameRender, int warningState ) {
+	if ( gameRender.postAAWarningState == warningState ) {
+		return;
+	}
+
+	gameRender.postAAWarningState = warningState;
+	switch ( warningState ) {
+	case OPENQ4_POST_AA_WARNING_UNAVAILABLE:
+		common->Warning( "SMAA is enabled (r_postAA = 1), but the current SMAA resources are unavailable. Falling back to no post AA." );
+		break;
+	case OPENQ4_POST_AA_WARNING_POST_LIGHTING_STACK:
+		common->Warning( "SMAA is enabled (r_postAA = 1), but r_usePostLightingStack disables the current SMAA path. Falling back to no post AA." );
+		break;
+	default:
+		break;
+	}
+}
+
 static const idMaterial* FindPostProcessMaterial( const char* primaryName, const char* fallbackName ) {
 	const idMaterial* material = declManager->FindMaterial( primaryName, false );
-	if ( material != NULL || fallbackName == NULL ) {
+	if ( IsUsablePostProcessMaterial( material ) || fallbackName == NULL ) {
 		return material;
 	}
-	return declManager->FindMaterial( fallbackName, false );
+
+	if ( material != NULL ) {
+		common->Warning( "Post-process material '%s' defaulted during parse; trying fallback '%s'.",
+			primaryName,
+			( fallbackName != NULL ) ? fallbackName : "<none>" );
+	}
+
+	material = declManager->FindMaterial( fallbackName, false );
+	if ( IsUsablePostProcessMaterial( material ) ) {
+		return material;
+	}
+
+	if ( material != NULL ) {
+		common->Warning( "Fallback post-process material '%s' defaulted during parse.", fallbackName );
+	}
+
+	return NULL;
 }
 
 static void OpenQ4_RenderSceneDirect( const renderView_t *view, idRenderWorld *renderWorld, idCamera *portalSky ) {
@@ -55,12 +132,14 @@ void idGameLocal::ShutdownGameRenderSystem( void ) {
 	gameRender.blackPostProcessMaterial = NULL;
 	gameRender.resolvePostProcessMaterial = NULL;
 	gameRender.smaaEdgePostProcessMaterial = NULL;
+	gameRender.smaaWeightsPostProcessMaterial = NULL;
 	gameRender.smaaBlendPostProcessMaterial = NULL;
 	gameRender.postProcessAvailable = false;
 	gameRender.smaaAvailable = false;
 	gameRender.renderTargetWidth = 0;
 	gameRender.renderTargetHeight = 0;
 	gameRender.videoRestartCount = ( renderSystem != NULL ) ? renderSystem->GetVideoRestartCount() : 0;
+	gameRender.postAAWarningState = OPENQ4_POST_AA_WARNING_NONE;
 }
 
 /*
@@ -91,7 +170,8 @@ void idGameLocal::InitGameRenderSystem(void) {
 
 	{
 		idImageOpts opts;
-		opts.format = FMT_RGBA8;
+		// Keep scene lighting in FP16 until the final fullscreen presentation pass.
+		opts.format = FMT_RGBA16F;
 		opts.colorFormat = CFM_DEFAULT;
 		opts.numLevels = 1;
 		opts.textureType = TT_2D;
@@ -113,7 +193,8 @@ void idGameLocal::InitGameRenderSystem(void) {
 	for(int i = 0; i < 2; i++)
 	{
 		idImageOpts opts;
-		opts.format = FMT_RGBA8;
+		// Ping-pong post-process buffers stay FP16 so bloom and grading retain highlight headroom.
+		opts.format = FMT_RGBA16F;
 		opts.colorFormat = CFM_DEFAULT;
 		opts.numLevels = 1;
 		opts.textureType = TT_2D;
@@ -131,7 +212,7 @@ void idGameLocal::InitGameRenderSystem(void) {
 
 	{
 		idImageOpts opts;
-		opts.format = FMT_RGBA8;
+		opts.format = FMT_RGBA16F;
 		opts.colorFormat = CFM_DEFAULT;
 		opts.numLevels = 1;
 		opts.textureType = TT_2D;
@@ -154,17 +235,13 @@ void idGameLocal::InitGameRenderSystem(void) {
 	gameRender.blurPostProcessMaterial = FindPostProcessMaterial( "postprocess/blur", "postprocess/openq4_blur" );
 	gameRender.resolvePostProcessMaterial = FindPostProcessMaterial( "postprocess/resolvepostprocess", "postprocess/openq4_resolvepostprocess" );
 	gameRender.smaaEdgePostProcessMaterial = FindPostProcessMaterial( "postprocess/smaa_edge", "postprocess/openq4_smaa_edge" );
+	gameRender.smaaWeightsPostProcessMaterial = FindPostProcessMaterial( "postprocess/smaa_weights", "postprocess/openq4_smaa_weights" );
 	gameRender.smaaBlendPostProcessMaterial = FindPostProcessMaterial( "postprocess/smaa_blend", "postprocess/openq4_smaa_blend" );
 	gameRender.postProcessAvailable = (gameRender.noPostProcessMaterial != NULL) &&
 		(gameRender.resolvePostProcessMaterial != NULL);
-	gameRender.smaaAvailable = (gameRender.smaaEdgePostProcessMaterial != NULL) &&
-		(gameRender.smaaBlendPostProcessMaterial != NULL);
+	gameRender.smaaAvailable = EvaluateSMAAAvailability( gameRender );
 	if (!gameRender.postProcessAvailable) {
-		common->Warning("Postprocess materials missing; falling back to direct render.");
-	}
-
-	if ( cvarSystem->GetCVarInteger( "r_postAA" ) == 1 && !gameRender.smaaAvailable ) {
-		common->Warning( "SMAA is enabled (r_postAA = 1), but SMAA materials are missing. Falling back to no post AA." );
+		common->Warning("Postprocess materials missing or invalid; falling back to direct render.");
 	}
 
 	if ( requestedMsaaSamples > 0 ) {
@@ -303,15 +380,23 @@ void idGameLocal::RenderScene(const renderView_t *view, idRenderWorld *renderWor
 	renderSystem->BindRenderTexture(gameRender.postProcessRT[0], nullptr);
 		renderSystem->ClearRenderTarget( true, true, 1.0f, 0.0f, 0.0f, 0.0f );
 		renderSystem->DrawStretchPic(0.0f, 0.0f, SCREEN_WIDTH, SCREEN_HEIGHT, 0.0f, 1.0f, 1.0f, 0.0f, gameRender.resolvePostProcessMaterial);
-		// Preserve resolved scene color in _currentRender before SMAA edge/blend passes.
-		// This avoids undefined feedback from sampling and writing the same RT in blend pass.
-		renderSystem->CaptureRenderToImage("_currentRender");
 	renderSystem->BindRenderTexture( nullptr, nullptr );
 
-	const bool useSMAA = ( cvarSystem->GetCVarInteger( "r_postAA" ) == 1 ) &&
-		!cvarSystem->GetCVarBool( "r_usePostLightingStack" ) &&
-		gameRender.smaaAvailable &&
-		gameRender.postProcessRT[1] != NULL;
+	const bool wantsSMAA = ( cvarSystem->GetCVarInteger( "r_postAA" ) == 1 );
+	if ( wantsSMAA && gameRender.smaaAvailable ) {
+		gameRender.smaaAvailable = EvaluateSMAAAvailability( gameRender );
+	}
+	int postAAWarningState = OPENQ4_POST_AA_WARNING_NONE;
+	if ( wantsSMAA ) {
+		if ( cvarSystem->GetCVarBool( "r_usePostLightingStack" ) ) {
+			postAAWarningState = OPENQ4_POST_AA_WARNING_POST_LIGHTING_STACK;
+		} else if ( !gameRender.smaaAvailable ) {
+			postAAWarningState = OPENQ4_POST_AA_WARNING_UNAVAILABLE;
+		}
+	}
+	UpdatePostAAWarningState( gameRender, postAAWarningState );
+
+	const bool useSMAA = wantsSMAA && ( postAAWarningState == OPENQ4_POST_AA_WARNING_NONE );
 	if ( useSMAA ) {
 		// Pass 1: edge detection into _postProcessAlbedo1.
 		renderSystem->BindRenderTexture( gameRender.postProcessRT[1], nullptr );
@@ -321,13 +406,23 @@ void idGameLocal::RenderScene(const renderView_t *view, idRenderWorld *renderWor
 			0.0f, 1.0f, 1.0f, 0.0f,
 			gameRender.smaaEdgePostProcessMaterial );
 
-		// Pass 2: neighborhood blending back into _postProcessAlbedo0.
+		// Pass 2: blending weight calculation into _postProcessAlbedo0.
 		renderSystem->BindRenderTexture( gameRender.postProcessRT[0], nullptr );
 		renderSystem->ClearRenderTarget( true, true, 1.0f, 0.0f, 0.0f, 0.0f );
 		renderSystem->DrawStretchPic(
 			0.0f, 0.0f, SCREEN_WIDTH, SCREEN_HEIGHT,
 			0.0f, 1.0f, 1.0f, 0.0f,
+			gameRender.smaaWeightsPostProcessMaterial );
+
+		// Pass 3: neighborhood blending into _postProcessAlbedo1, then copy the
+		// final SMAA output back into _postProcessAlbedo0 for the rest of the post stack.
+		renderSystem->BindRenderTexture( gameRender.postProcessRT[1], nullptr );
+		renderSystem->ClearRenderTarget( true, true, 1.0f, 0.0f, 0.0f, 0.0f );
+		renderSystem->DrawStretchPic(
+			0.0f, 0.0f, SCREEN_WIDTH, SCREEN_HEIGHT,
+			0.0f, 1.0f, 1.0f, 0.0f,
 			gameRender.smaaBlendPostProcessMaterial );
+		renderSystem->CaptureRenderToImage( "_postProcessAlbedo0" );
 		renderSystem->BindRenderTexture( nullptr, nullptr );
 	}
 
