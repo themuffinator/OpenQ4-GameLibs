@@ -885,8 +885,20 @@ void idAI::Spawn( void ) {
 		}
 	}
 	
-	// Print out a warning about any AI that is spawned unhidden since they will be all thinking
-	if( gameLocal.GameState ( ) == GAMESTATE_STARTUP && !spawnArgs.GetInt( "hide" ) && !spawnArgs.GetInt( "trigger_anim" ) && !spawnArgs.GetInt( "trigger_cover" ) && !spawnArgs.GetInt( "trigger_move" ) ){
+	// Print out a warning about unhidden combat AI that will begin thinking immediately.
+	const bool hasTriggerAnim = spawnArgs.FindKey( "trigger_anim" ) != NULL && spawnArgs.GetString( "trigger_anim" )[0] != '\0';
+	const bool hasTriggerCover = spawnArgs.FindKey( "trigger_cover" ) != NULL && spawnArgs.GetString( "trigger_cover" )[0] != '\0';
+	const bool hasTriggerMove = spawnArgs.FindKey( "trigger_move" ) != NULL && spawnArgs.GetString( "trigger_move" )[0] != '\0';
+	const bool suppressUnhiddenWarning =
+		spawnArgs.GetBool( "hide" ) ||
+		hasTriggerAnim ||
+		hasTriggerCover ||
+		hasTriggerMove ||
+		spawnArgs.GetBool( "passive" ) ||
+		spawnArgs.GetBool( "notarget" ) ||
+		spawnArgs.GetBool( "cinematic" );
+
+	if( gameLocal.GameState ( ) == GAMESTATE_STARTUP && !suppressUnhiddenWarning ){
 		gameLocal.Warning( "Unhidden AI placed in map (will be constantly active): %s (%s)", name.c_str(), GetPhysics()->GetOrigin().ToString() );
 	}
 

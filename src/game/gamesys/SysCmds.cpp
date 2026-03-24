@@ -1062,6 +1062,80 @@ static void Cmd_Viewpos_f( const idCmdArgs &args ) {
 
 /*
 =================
+Cmd_GetLevelshotBaseName
+=================
+*/
+static bool Cmd_GetLevelshotBaseName( const idCmdArgs &args, idStr &baseName ) {
+	idStr mapName;
+
+	if ( args.Argc() > 2 ) {
+		return false;
+	}
+
+	if ( args.Argc() == 1 ) {
+		mapName = gameLocal.GetMapName();
+		mapName.StripPath();
+		mapName.StripFileExtension();
+		if ( mapName.Length() <= 0 ) {
+			return false;
+		}
+		baseName = va( "gfx/guis/loadscreens/%s", mapName.c_str() );
+		return true;
+	}
+
+	baseName = args.Argv( 1 );
+	baseName.StripFileExtension();
+	if ( baseName.Find( "/", false ) < 0 && baseName.Find( ":", false ) < 0 ) {
+		baseName = va( "gfx/guis/loadscreens/%s", baseName.c_str() );
+	}
+	return true;
+}
+
+/*
+=================
+Cmd_GotoLevelshot_f
+=================
+*/
+void Cmd_GotoLevelshot_f( const idCmdArgs &args ) {
+	idPlayer	*player;
+	idStr		levelshotFile;
+	idVec3		origin;
+	idAngles	angles;
+	int			parsedCount;
+	char		*buffer = NULL;
+	const int	numRead;
+
+	player = gameLocal.GetLocalPlayer();
+	if ( !player || !gameLocal.CheatsOk() ) {
+		return;
+	}
+
+	if ( !Cmd_GetLevelshotBaseName( args, levelshotFile ) ) {
+		gameLocal.Printf( "usage: gotolevelshot [mapname]\n" );
+		return;
+	}
+
+	levelshotFile.SetFileExtension( ".txt" );
+	numRead = fileSystem->ReadFile( levelshotFile, reinterpret_cast< void ** >( &buffer ), NULL );
+	if ( numRead <= 0 || buffer == NULL ) {
+		gameLocal.Printf( "No levelshot pose file: %s\n", levelshotFile.c_str() );
+		return;
+	}
+
+	parsedCount = sscanf( buffer, "%f %f %f %f %f %f", &origin.x, &origin.y, &origin.z, &angles.pitch, &angles.yaw, &angles.roll );
+	fileSystem->FreeFile( buffer );
+
+	if ( parsedCount != 6 ) {
+		gameLocal.Printf( "Could not parse levelshot pose from %s\n", levelshotFile.c_str() );
+		return;
+	}
+
+	origin.z -= pm_normalviewheight.GetFloat() - 0.25f;
+	player->Teleport( origin, angles, NULL );
+}
+
+/*
+=================
 Cmd_SetViewpos_f
 =================
 */
@@ -3204,6 +3278,7 @@ void idGameLocal::InitConsoleCommands( void ) {
 	cmdSystem->AddCommand( "getviewpos",			Cmd_GetViewpos_f,			CMD_FL_GAME|CMD_FL_CHEAT,	"prints the current view position" );
 	cmdSystem->AddCommand( "viewpos",				Cmd_Viewpos_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"prints the current view origin and angles" );
 	cmdSystem->AddCommand( "setviewpos",			Cmd_SetViewpos_f,			CMD_FL_GAME|CMD_FL_CHEAT,	"sets the current view position" );
+	cmdSystem->AddCommand( "gotolevelshot",			Cmd_GotoLevelshot_f,		CMD_FL_GAME|CMD_FL_CHEAT,	"moves the view to the levelshot position" );
 	cmdSystem->AddCommand( "teleport",				Cmd_Teleport_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"teleports the player to an entity location", idGameLocal::ArgCompletion_EntityName );
 	cmdSystem->AddCommand( "trigger",				Cmd_Trigger_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"triggers an entity", idGameLocal::ArgCompletion_EntityName );
 	cmdSystem->AddCommand( "spawn",					Cmd_Spawn_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"spawns a game entity", idCmdSystem::ArgCompletion_Decl<DECL_ENTITYDEF> );

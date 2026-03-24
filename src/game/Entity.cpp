@@ -6859,7 +6859,12 @@ void idAnimatedEntity::Event_GetJointPos( jointHandle_t jointnum ) {
 	idMat3 axis;
 
 	if ( !GetJointWorldTransform( jointnum, gameLocal.time, offset, axis ) ) {
-		gameLocal.Warning( "Joint # %d out of range on entity '%s'",  jointnum, name.c_str() );
+		if ( jointnum == INVALID_JOINT ) {
+			offset = GetPhysics()->GetOrigin();
+			axis = GetPhysics()->GetAxis();
+		} else {
+			gameLocal.Warning( "Joint # %d out of range on entity '%s'",  jointnum, name.c_str() );
+		}
 	}
 
 	idThread::ReturnVector( offset );
@@ -6877,7 +6882,12 @@ void idAnimatedEntity::Event_GetJointAngle( jointHandle_t jointnum ) {
 	idMat3 axis;
 
 	if ( !GetJointWorldTransform( jointnum, gameLocal.time, offset, axis ) ) {
-		gameLocal.Warning( "Joint # %d out of range on entity '%s'",  jointnum, name.c_str() );
+		if ( jointnum == INVALID_JOINT ) {
+			offset = GetPhysics()->GetOrigin();
+			axis = GetPhysics()->GetAxis();
+		} else {
+			gameLocal.Warning( "Joint # %d out of range on entity '%s'",  jointnum, name.c_str() );
+		}
 	}
 
 	idAngles ang = axis.ToAngles();
