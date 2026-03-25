@@ -1103,7 +1103,7 @@ void Cmd_GotoLevelshot_f( const idCmdArgs &args ) {
 	idAngles	angles;
 	int			parsedCount;
 	char		*buffer = NULL;
-	const int	numRead;
+	int			numRead;
 
 	player = gameLocal.GetLocalPlayer();
 	if ( !player || !gameLocal.CheatsOk() ) {
