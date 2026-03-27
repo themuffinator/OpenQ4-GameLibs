@@ -3703,6 +3703,16 @@ void idEntity::ApplyImpulse( idEntity* ent, int id, const idVec3& point, const i
 idEntity::AddDamageEffect
 ================
 */
+static const rvDeclMatType *GetResolvedCollisionMaterialType( const trace_t &collision ) {
+	if ( collision.c.materialType != NULL ) {
+		return collision.c.materialType;
+	}
+	if ( collision.c.material != NULL ) {
+		return collision.c.material->GetMaterialType();
+	}
+	return NULL;
+}
+
 void idEntity::AddDamageEffect( const trace_t &collision, const idVec3 &velocity, const char *damageDefName, idEntity* inflictor ) {
 	const char *sound, *decal, *key;
 
@@ -3714,7 +3724,10 @@ void idEntity::AddDamageEffect( const trace_t &collision, const idVec3 &velocity
 		return;
 	}
 
-	const char *materialType = gameLocal.sufaceTypeNames[ collision.c.material->GetSurfaceType() ];
+	const rvDeclMatType *resolvedMaterialType = GetResolvedCollisionMaterialType( collision );
+	const char *materialType = resolvedMaterialType != NULL
+		? resolvedMaterialType->GetName()
+		: gameLocal.sufaceTypeNames[ collision.c.material->GetSurfaceType() ];
 
 	// start impact sound based on material type
 	key = va( "snd_%s", materialType );
@@ -6549,8 +6562,9 @@ void idAnimatedEntity::AddDamageEffect( const trace_t &collision, const idVec3 &
 
 	// blood splats are thrown onto nearby surfaces
 	splat = NULL;
-	if ( collision.c.material->GetMaterialType() ) {
-		key = va( "mtr_splat_%s", collision.c.material->GetMaterialType()->GetName() );
+	const rvDeclMatType *resolvedMaterialType = GetResolvedCollisionMaterialType( collision );
+	if ( resolvedMaterialType ) {
+		key = va( "mtr_splat_%s", resolvedMaterialType->GetName() );
 		splat = spawnArgs.RandomPrefix( key, gameLocal.random );
 	}
 	if ( !splat || !*splat ) {
@@ -6571,8 +6585,8 @@ void idAnimatedEntity::AddDamageEffect( const trace_t &collision, const idVec3 &
 			|| ((idAI*)this)->team != AITEAM_MARINE ) {
 			// place a wound overlay on the model
 			decal = NULL;
-			if ( collision.c.material->GetMaterialType() ) {
-				key = va( "mtr_wound_%s", collision.c.material->GetMaterialType()->GetName() );
+			if ( resolvedMaterialType ) {
+				key = va( "mtr_wound_%s", resolvedMaterialType->GetName() );
 				decal = spawnArgs.RandomPrefix( key, gameLocal.random );
 			}
 			if ( !decal || !*decal ) {
