@@ -580,7 +580,12 @@ void idClipModel::Restore( idRestoreGame *savefile ) {
 	}
 	savefile->ReadInt( traceModelIndex );
 	if ( traceModelIndex >= 0 ) {
-		traceModelCache[traceModelIndex]->refCount++;
+		if ( traceModelIndex >= traceModelCache.Num() || traceModelCache[ traceModelIndex ] == NULL ) {
+			gameLocal.Warning( "idClipModel::Restore: invalid trace model index %d (cache size %d)", traceModelIndex, traceModelCache.Num() );
+			traceModelIndex = -1;
+		} else {
+			traceModelCache[ traceModelIndex ]->refCount++;
+		}
 	}
 	savefile->ReadInt( renderModelHandle );
 	savefile->ReadBool( linked );

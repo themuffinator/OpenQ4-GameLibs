@@ -1301,7 +1301,8 @@ void idRestoreGame::ReadObject( idClass *&obj ) {
 
 	ReadInt( index );
 	if ( ( index < 0 ) || ( index >= objects.Num() ) ) {
-		Error( "idRestoreGame::ReadObject: invalid object index" );
+		Error( "idRestoreGame::ReadObject: invalid object index %d (count %d, offset %d)",
+			index, objects.Num(), file->Tell() );
 	}
 	obj = objects[ index ];
 }
