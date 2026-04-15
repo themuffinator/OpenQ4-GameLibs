@@ -1046,6 +1046,7 @@ void idProjectile::SpawnImpactEntities(const trace_t& collision, const idVec3 ve
 			tempDirection.z = idMath::Sin(DEG2RAD(pitch));
 
 			spawnProjectile->SetOwner(owner);
+			spawnProjectile->methodOfDeath = methodOfDeath;
 
 			//Now orient the direction to the surface world orientation.
 			direction = impactAxes * tempDirection;

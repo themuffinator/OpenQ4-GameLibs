@@ -6143,7 +6143,7 @@ idMultiplayerGame::ForceReady_f
 ================
 */
 void idMultiplayerGame::ForceReady_f( const idCmdArgs &args ) {
-	if ( !gameLocal.isMultiplayer || gameLocal.isClient ) {
+	if ( !gameLocal.isMultiplayer || !gameLocal.isServer ) {
 		gameLocal.Printf( "forceReady: multiplayer server only\n" );
 		return;
 	}

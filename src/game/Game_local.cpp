@@ -1735,7 +1735,7 @@ idGameLocal::MapRestart_f
 ===================
 */
 void idGameLocal::MapRestart_f( const idCmdArgs &args ) {
-	if ( !gameLocal.isMultiplayer || gameLocal.isClient ) {
+	if ( !gameLocal.isMultiplayer || !gameLocal.isServer ) {
 		common->Printf( "server is not running - use spawnServer\n" );
 		cmdSystem->BufferCommandText( CMD_EXEC_APPEND, "spawnServer\n" );
 		return;
@@ -1858,7 +1858,7 @@ idGameLocal::NextMap_f
 ===================
 */
 void idGameLocal::NextMap_f( const idCmdArgs &args ) {
-	if ( !gameLocal.isMultiplayer || gameLocal.isClient ) {
+	if ( !gameLocal.isMultiplayer || !gameLocal.isServer ) {
 		common->Printf( "server is not running\n" );
 		return;
 	}
