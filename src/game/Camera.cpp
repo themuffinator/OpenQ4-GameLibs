@@ -3,6 +3,56 @@
 
 #include "Game_local.h"
 
+namespace {
+ID_INLINE int GameLocal_PreviousFrameTime() {
+	if ( gameLocal.GetMHz() == common->GetUserCmdHz() ) {
+		const int previousFrame = gameLocal.GetFrameNum() - 1;
+		return ( previousFrame > 0 ) ? common->GetUserCmdTime( previousFrame ) : 0;
+	}
+	return gameLocal.GetTime() - gameLocal.GetMSec();
+}
+
+ID_INLINE int GameLocal_PresentationTime() {
+	return Sys_Milliseconds();
+}
+
+ID_INLINE float GameLocal_GetPresentationInterpolationFraction() {
+	if ( gameLocal.GetDemoState() == DEMO_PLAYING || gameLocal.IsTimeDemo() ) {
+		return 1.0f;
+	}
+
+	const float ticMsec = common->GetUserCmdMsecFloat();
+	if ( ticMsec <= 0.0f ) {
+		return 1.0f;
+	}
+
+	return idMath::ClampFloat( 0.0f, 1.0f,
+		static_cast<float>( GameLocal_PresentationTime() - gameLocal.GetTime() ) / ticMsec );
+}
+
+ID_INLINE idMat3 GameLocal_InterpolateAxis( const idMat3 &from, const idMat3 &to, float fraction ) {
+	if ( fraction <= 0.0f ) {
+		return from;
+	}
+	if ( fraction >= 1.0f ) {
+		return to;
+	}
+
+	idQuat blended;
+	blended.Slerp( from.ToQuat(), to.ToQuat(), fraction );
+	return blended.ToMat3();
+}
+
+ID_INLINE void GameLocal_GetEntityPresentationTransform( idEntity *ent, idVec3 &origin, idMat3 &axis ) {
+	if ( ent != NULL ) {
+		ent->GetPresentationTransformForView( origin, axis );
+	} else {
+		origin = vec3_zero;
+		axis = mat3_identity;
+	}
+}
+}
+
 /*
 ===============================================================================
 
@@ -250,18 +300,24 @@ void idCameraView::GetViewParms( renderView_t *view ) {
 		ent = this;
 	}
 
-	view->vieworg = ent->GetPhysics()->GetOrigin();
+	idVec3 entOrigin;
+	idMat3 entAxis;
+	GameLocal_GetEntityPresentationTransform( ent, entOrigin, entAxis );
+	view->vieworg = entOrigin;
 	if ( attachedView ) {
-		dir = attachedView->GetPhysics()->GetOrigin() - view->vieworg;
+		idVec3 attachedViewOrigin;
+		idMat3 unusedAttachedViewAxis;
+		GameLocal_GetEntityPresentationTransform( attachedView, attachedViewOrigin, unusedAttachedViewAxis );
+		dir = attachedViewOrigin - view->vieworg;
 		dir.Normalize();
 		view->viewaxis = dir.ToMat3();
 	} else {
-		view->viewaxis = ent->GetPhysics()->GetAxis();
+		view->viewaxis = entAxis;
 	}
 	
 // RAVEN BEGIN
 // bdube: interpolate fov
-	gameLocal.CalcFov( fov.GetCurrentValue( gameLocal.time ), view->fov_x, view->fov_y );
+	gameLocal.CalcFov( fov.GetCurrentValue( GameLocal_PresentationTime() ), view->fov_x, view->fov_y );
 // RAVEN END
 }
 
@@ -1646,6 +1702,16 @@ idCameraAnim::idCameraAnim() {
 	starttime = 0;
 	activator = NULL;
 	lastFrame = -1;
+	presentationViewTime = -1;
+	presentationRealFrame = -1;
+	presentationCut = 0;
+	presentationCanInterpolate = false;
+	presentationPrevViewOrigin = vec3_zero;
+	presentationPrevViewAxis = mat3_identity;
+	presentationPrevFov = 0.0f;
+	presentationCurViewOrigin = vec3_zero;
+	presentationCurViewAxis = mat3_identity;
+	presentationCurFov = 0.0f;
 }
 
 /*
@@ -1689,6 +1755,10 @@ void idCameraAnim::Restore( idRestoreGame *savefile ) {
 	activator.Restore( savefile );
 
 	LoadAnim();
+	presentationViewTime = -1;
+	presentationRealFrame = -1;
+	presentationCut = 0;
+	presentationCanInterpolate = false;
 }
 
 /*
@@ -1765,6 +1835,10 @@ void idCameraAnim::Start( void ) {
 
 	lastFrame = -1;
 	starttime = gameLocal.time;
+	presentationViewTime = -1;
+	presentationRealFrame = -1;
+	presentationCut = 0;
+	presentationCanInterpolate = false;
 	gameLocal.SetCamera( this );
 	BecomeActive( TH_THINK );
 
@@ -1837,7 +1911,11 @@ void idCameraAnim::Think( void ) {
 
 		if ( cameraDef->GetAnim(1)->GetFrameRate() == gameLocal.GetMHz() ) {
 			frameTime	= gameLocal.time - starttime;
-			frame		= frameTime / gameLocal.msec;
+			if ( gameLocal.GetMHz() == common->GetUserCmdHz() ) {
+				frame = common->GetUserCmdTicsForMsecCeil( frameTime );
+			} else {
+				frame = frameTime / gameLocal.msec;
+			}
 		} else {
 			frameTime	= ( gameLocal.time - starttime ) * cameraDef->GetAnim(1)->GetFrameRate();
 			frame		= frameTime / 1000;
@@ -1898,7 +1976,11 @@ void idCameraAnim::GetViewParms( renderView_t *view ) {
 
 	if ( cameraDef->GetAnim(1)->GetFrameRate() == gameLocal.GetMHz() ) {
 		frameTime	= gameLocal.time - starttime;
-		frame		= frameTime / gameLocal.msec;
+		if ( gameLocal.GetMHz() == common->GetUserCmdHz() ) {
+			frame = common->GetUserCmdTicsForMsecCeil( frameTime );
+		} else {
+			frame = frameTime / gameLocal.msec;
+		}
 		lerp		= 0.0f;
 	} else {
 		frameTime	= ( gameLocal.time - starttime ) * cameraDef->GetAnim(1)->GetFrameRate();
@@ -1922,9 +2004,15 @@ void idCameraAnim::GetViewParms( renderView_t *view ) {
 	}
 
 	if ( g_debugCinematic.GetBool() ) {
-		int prevFrameTime	= ( gameLocal.time - starttime - gameLocal.msec ) * cameraDef->GetAnim(1)->GetFrameRate();
-		int prevFrame		= prevFrameTime / 1000;
+		int prevFrame;
 		int prevCut;
+
+		if ( cameraDef->GetAnim(1)->GetFrameRate() == gameLocal.GetMHz() && gameLocal.GetMHz() == common->GetUserCmdHz() ) {
+			prevFrame = Max( 0, frame - 1 );
+		} else {
+			int prevFrameTime	= ( GameLocal_PreviousFrameTime() - starttime ) * cameraDef->GetAnim(1)->GetFrameRate();
+			prevFrame			= prevFrameTime / 1000;
+		}
 
 		prevCut = 0;
 		for( i = 0; i < cameraDef->GetAnim(1)->NumCuts(); i++ ) {
@@ -1984,6 +2072,58 @@ void idCameraAnim::GetViewParms( renderView_t *view ) {
 		view->viewaxis = q3.ToMat3();
 		view->vieworg = camFrame[ 0 ].t * invlerp + camFrame[ 1 ].t * lerp + offset;
 		view->fov_x = camFrame[ 0 ].fov * invlerp + camFrame[ 1 ].fov * lerp;
+	}
+
+	const bool exactGameFrameRate = ( cameraDef->GetAnim(1)->GetFrameRate() == gameLocal.GetMHz() )
+		&& ( gameLocal.GetMHz() == common->GetUserCmdHz() );
+	const idVec3 simViewOrigin = view->vieworg;
+	const idMat3 simViewAxis = view->viewaxis;
+	const float simViewFov = view->fov_x;
+	if ( presentationViewTime < 0 ) {
+		presentationViewTime = gameLocal.time;
+		presentationRealFrame = realFrame;
+		presentationCut = cut;
+		presentationCanInterpolate = false;
+		presentationPrevViewOrigin = simViewOrigin;
+		presentationPrevViewAxis = simViewAxis;
+		presentationPrevFov = simViewFov;
+		presentationCurViewOrigin = simViewOrigin;
+		presentationCurViewAxis = simViewAxis;
+		presentationCurFov = simViewFov;
+	} else if ( presentationViewTime != gameLocal.time ) {
+		const bool sequentialFrame = ( realFrame == presentationRealFrame + 1 );
+		const bool crossedCut = ( cut != presentationCut );
+
+		presentationPrevViewOrigin = presentationCurViewOrigin;
+		presentationPrevViewAxis = presentationCurViewAxis;
+		presentationPrevFov = presentationCurFov;
+		presentationCurViewOrigin = simViewOrigin;
+		presentationCurViewAxis = simViewAxis;
+		presentationCurFov = simViewFov;
+		presentationViewTime = gameLocal.time;
+		presentationRealFrame = realFrame;
+		presentationCut = cut;
+		presentationCanInterpolate = exactGameFrameRate && sequentialFrame && !crossedCut;
+		if ( !presentationCanInterpolate ) {
+			presentationPrevViewOrigin = presentationCurViewOrigin;
+			presentationPrevViewAxis = presentationCurViewAxis;
+			presentationPrevFov = presentationCurFov;
+		}
+	} else {
+		presentationCurViewOrigin = simViewOrigin;
+		presentationCurViewAxis = simViewAxis;
+		presentationCurFov = simViewFov;
+	}
+
+	if ( presentationCanInterpolate ) {
+		const float fraction = GameLocal_GetPresentationInterpolationFraction();
+		view->vieworg.Lerp( presentationPrevViewOrigin, presentationCurViewOrigin, fraction );
+		view->viewaxis = GameLocal_InterpolateAxis( presentationPrevViewAxis, presentationCurViewAxis, fraction );
+		view->fov_x = idMath::Lerp( presentationPrevFov, presentationCurFov, fraction );
+	} else {
+		view->vieworg = presentationCurViewOrigin;
+		view->viewaxis = presentationCurViewAxis;
+		view->fov_x = presentationCurFov;
 	}
 
 	gameLocal.CalcFov( view->fov_x, view->fov_x, view->fov_y );

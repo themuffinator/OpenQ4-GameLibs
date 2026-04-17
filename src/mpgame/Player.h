@@ -397,6 +397,15 @@ public:
 	// if a third person view is used
 	idVec3					firstPersonViewOrigin;
 	idMat3					firstPersonViewAxis;
+	int						presentationViewTime;
+	int						presentationRealFrame;
+	bool					presentationCanInterpolate;
+	idVec3					presentationPrevViewOrigin;
+	idMat3					presentationPrevViewAxis;
+	float					presentationPrevFov;
+	idVec3					presentationCurViewOrigin;
+	idMat3					presentationCurViewAxis;
+	float					presentationCurFov;
 
 	idDragEntity			dragEntity;
 	idVec3					intentDir;
@@ -487,6 +496,10 @@ public:
 	void					SmoothenRenderView( bool firstPerson );
 	void					CalculateRenderView( void );	// called every tic by player code
 	void					CalculateFirstPersonView( void );
+	void					UpdatePresentationViewState( void );
+	void					GetPresentationViewPos( idVec3 &origin, idMat3 &axis ) const;
+	float					GetPresentationFov( void );
+	void					UpdatePresentationEntities( void );
 	
 	void					DrawShadow( renderEntity_t *headRenderEnt );
 	void					DrawHUD( idUserInterface *hud );
@@ -499,7 +512,7 @@ public:
 
  	float					DefaultFov( void ) const;
  	float					CalcFov( bool honorZoom );
-	void					CalculateViewWeaponPos( idVec3 &origin, idMat3 &axis );
+	void					CalculateViewWeaponPos( idVec3 &origin, idMat3 &axis, const idVec3 *viewOriginOverride = NULL, const idMat3 *viewAxisOverride = NULL );
 	void					GetViewPos( idVec3 &origin, idMat3 &axis ) const;
  	void					OffsetThirdPersonView( float angle, float range, float height, bool clip );
 	void					OffsetThirdPersonVehicleView( bool clip );
@@ -957,6 +970,9 @@ private:
 	rvClientEffectPtr		hasteEffect;
 	rvClientEffectPtr		flagEffect;
 	rvClientEffectPtr		arenaEffect;
+	int						presentationPowerupEffectTime;
+	float					presentationPrevPowerupEffectAttenuation;
+	float					presentationCurPowerupEffectAttenuation;
 
 	rvClientEffectPtr		teamHealthRegen;
 	bool					teamHealthRegenPending;
@@ -1037,6 +1053,9 @@ private:
 	void					HandleCheats				( void );
 	void					ClearCheatState				( void );
 	void					UpdateViewAngles			( void );
+	float					GetPowerupEffectAttenuation	( void ) const;
+	void					UpdatePresentationPowerupEffectState( float attenuation );
+	void					UpdatePresentationPowerupEffects( void );
 	void					UpdatePowerUps				( void );
  	void					UpdateDeathSkin				( bool state_hitch );
 	void					UpdateFocus					( void );

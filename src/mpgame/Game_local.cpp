@@ -68,6 +68,10 @@ idCVarHelp *				idCVarHelp::staticCVarHelpsTail = NULL;
 
 idCVar com_forceGenericSIMD( "com_forceGenericSIMD", "0", CVAR_BOOL|CVAR_SYSTEM, "force generic platform independent SIMD" );
 
+int Sys_Milliseconds( void ) {
+	return sys ? sys->Milliseconds() : 0;
+}
+
 #endif
 
 idRenderWorld *				gameRenderWorld = NULL;		// all drawing is done to this world
@@ -451,7 +455,7 @@ void idGameLocal::Init( void ) {
 #else
 
 	mHz = common->GetUserCmdHz();
-	msec = common->GetUserCmdMSec();
+	msec = common->GetUserCmdDeltaMsec( 1 );
 
 // RAVEN BEGIN
 // jsinger: attempt to eliminate cross-DLL allocation issues
@@ -1421,7 +1425,7 @@ void idGameLocal::LoadMap( const char *mapName, int randseed ) {
 
 	// these can changed based upon sp / mp
 	mHz = common->GetUserCmdHz();
-	msec = common->GetUserCmdMSec();
+	msec = common->GetUserCmdDeltaMsec( 1 );
 
 	if ( !sameMap || ( mapFile && mapFile->NeedsReload() ) ) {
 		// load the .map file
@@ -5762,10 +5766,14 @@ void idGameLocal::AlertAI( idEntity *ent ) {
 		if ( ent->IsType( idActor::GetClassType() ) ) {
 // RAVEN END
 			// alert them for the next frame
-			lastAIAlertActorTime = time + GetMSec();
+			lastAIAlertActorTime = ( GetMHz() == common->GetUserCmdHz() )
+				? common->GetUserCmdTime( GetFrameNum() + 1 )
+				: time + GetMSec();
 			lastAIAlertActor = static_cast<idActor *>( ent );
 		} else {
-			lastAIAlertEntityTime = time + GetMSec();
+			lastAIAlertEntityTime = ( GetMHz() == common->GetUserCmdHz() )
+				? common->GetUserCmdTime( GetFrameNum() + 1 )
+				: time + GetMSec();
 			lastAIAlertEntity = ent;
 		}
 	} else {
@@ -6312,7 +6320,9 @@ void idGameLocal::SetCamera( idCamera *cam ) {
 
 	} else {
 		inCinematic = false;
-		cinematicStopTime = time + msec;
+		cinematicStopTime = ( GetMHz() == common->GetUserCmdHz() )
+			? common->GetUserCmdTime( GetFrameNum() + 1 )
+			: time + msec;
 
 		// restore r_znear
 		cvarSystem->SetCVarFloat( "r_znear", 3.0f );

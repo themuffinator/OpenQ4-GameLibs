@@ -712,7 +712,13 @@ bool idThread::Execute( void ) {
 		if ( waitingUntil > lastExecuteTime ) {
 			PostEventMS( &EV_Thread_Execute, waitingUntil - lastExecuteTime );
 		} else if ( interpreter.MultiFrameEventInProgress() ) {
-			PostEventMS( &EV_Thread_Execute, gameLocal.msec );
+			int nextFrameDelay = ( gameLocal.GetMHz() == common->GetUserCmdHz() )
+				? common->GetUserCmdTime( gameLocal.GetFrameNum() + 1 ) - gameLocal.time
+				: gameLocal.msec;
+			if ( nextFrameDelay < 1 ) {
+				nextFrameDelay = 1;
+			}
+			PostEventMS( &EV_Thread_Execute, nextFrameDelay );
 		}
 	}
 
@@ -1025,6 +1031,20 @@ idThread::WaitSec
 ================
 */
 void idThread::WaitSec( float time ) {
+	if ( gameLocal.GetMHz() == common->GetUserCmdHz() ) {
+		Pause();
+
+		// Keep script waits aligned to exact 60 Hz tic boundaries instead of
+		// truncating through integer milliseconds.
+		int waitTics = idMath::Ftoi( idMath::Ceil( Max( 0.0f, time ) * static_cast<float>( common->GetUserCmdHz() ) ) );
+		if ( waitTics < 1 ) {
+			waitTics = 1;
+		}
+
+		waitingUntil = common->GetUserCmdTime( gameLocal.GetFrameNum() + waitTics );
+		return;
+	}
+
 	WaitMS( SEC2MS( time ) );
 }
 
@@ -1039,7 +1059,9 @@ void idThread::WaitFrame( void ) {
 	// manual control threads don't set waitingUntil so that they can be run again
 	// that frame if necessary.
 	if ( !manualControl ) {
-		waitingUntil = gameLocal.time + gameLocal.msec;
+		waitingUntil = ( gameLocal.GetMHz() == common->GetUserCmdHz() )
+			? common->GetUserCmdTime( gameLocal.GetFrameNum() + 1 )
+			: gameLocal.time + gameLocal.msec;
 	}
 }
 
@@ -2005,7 +2027,9 @@ idThread::Event_GetFrameTime
 ================
 */
 void idThread::Event_GetFrameTime( void ) { 
-	idThread::ReturnFloat( MS2SEC( gameLocal.msec ) );
+	idThread::ReturnFloat( ( gameLocal.GetMHz() == common->GetUserCmdHz() )
+		? common->GetUserCmdSec()
+		: MS2SEC( gameLocal.msec ) );
 }
 
 /*

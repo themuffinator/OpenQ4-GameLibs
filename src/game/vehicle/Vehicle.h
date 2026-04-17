@@ -79,6 +79,7 @@ public:
 	
 	void					RunPrePhysics		( void );
 	void					RunPostPhysics		( void );
+	void					UpdatePresentationNonModelVisuals( void );
 
 	void					SelectWeapon		( int weapon );
 
@@ -137,6 +138,7 @@ public:
 
 	virtual void			Hide					( void );
 	virtual void			Show					( void );
+	virtual void			UpdatePresentationNonModelVisuals( void );
 
 	void					ClientPredictionThink	( void );
 	void					WriteToSnapshot			( idBitMsgDelta &msg ) const;
@@ -221,6 +223,7 @@ protected:
 	virtual void			UpdateHUD				( int position, idUserInterface* gui );
 	
 	void					SetPositions			( void );
+	void					UpdatePresentationCrashEffectState( const idVec3 &origin, const idMat3 &axis, float attenuation );
 	
 	void					SetCombatModel			( void );
 	void					LinkCombat				( void );
@@ -243,6 +246,13 @@ protected:
 	rvClientEffectPtr			crashEffect;
 	int							crashNextSound;
 	int							crashTime;
+	int							presentationCrashEffectTime;
+	idVec3						presentationPrevCrashEffectOrigin;
+	idVec3						presentationCurCrashEffectOrigin;
+	idMat3						presentationPrevCrashEffectAxis;
+	idMat3						presentationCurCrashEffectAxis;
+	float						presentationPrevCrashEffectAttenuation;
+	float						presentationCurCrashEffectAttenuation;
 	
 	float						autoRightDir;
 	bool						autoRight;

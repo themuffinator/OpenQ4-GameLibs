@@ -30,6 +30,7 @@ public:
 	virtual void	FreeLightDef( void );
 	virtual bool	GetPhysicsToSoundTransform( idVec3 &origin, idMat3 &axis );
 	void			Present( void );
+	virtual void	UpdatePresentationNonModelVisuals( void );
 
 	void			SaveState( idDict *args );
 	virtual void	SetColor( float red, float green, float blue );

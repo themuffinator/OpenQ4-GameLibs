@@ -35,6 +35,7 @@ public:
 		
 	virtual void	UpdateChangeableSpawnArgs	( const idDict *source );
 	virtual void	ShowEditingDialog			( void );
+	virtual void	UpdatePresentationNonModelVisuals( void );
 
 	virtual void	WriteToSnapshot				( idBitMsgDelta &msg ) const;
 	virtual void	ReadFromSnapshot			( const idBitMsgDelta &msg );
@@ -52,6 +53,7 @@ protected:
 			
 private:
 
+	void			UpdateLookAtTargetEffect( bool presentationSample );
 	void			Event_Activate		( idEntity *activator );
 	void			Event_LookAtTarget	( void );
 	void			Event_EarthQuake	( float requiresLOS );

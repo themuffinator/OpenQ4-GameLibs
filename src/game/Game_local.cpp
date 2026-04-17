@@ -6,6 +6,7 @@
 // RAVEN BEGIN
 #include "../bse/BSEInterface.h"
 #include "Projectile.h"
+#include "Weapon.h"
 #include "client/ClientEffect.h"
 #include "ai/AI.h"
 #include "ai/AI_Manager.h"
@@ -465,7 +466,7 @@ void idGameLocal::Init( void ) {
 #else
 
 	mHz = common->GetUserCmdHz();
-	msec = common->GetUserCmdMSec();
+	msec = common->GetUserCmdDeltaMsec( 1 );
 
 // RAVEN BEGIN
 // jsinger: attempt to eliminate cross-DLL allocation issues
@@ -1392,7 +1393,7 @@ void idGameLocal::LoadMap( const char *mapName, int randseed ) {
 
 	// these can changed based upon sp / mp
 	mHz = common->GetUserCmdHz();
-	msec = common->GetUserCmdMSec();
+	msec = common->GetUserCmdDeltaMsec( 1 );
 
 	if ( !sameMap || ( mapFile && mapFile->NeedsReload() ) ) {
 		// load the .map file
@@ -4066,6 +4067,79 @@ void DisplayClipProfile( void );
 
 /*
 ================
+GameLocal_UpdateSceneProjectilePresentation
+================
+*/
+static void GameLocal_UpdateSceneProjectilePresentation( const idPlayer *viewPlayer ) {
+	if ( viewPlayer == NULL || gameLocal.isNewFrame ) {
+		return;
+	}
+
+	for ( idEntity *ent = gameLocal.spawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
+		if ( !ent->IsType( idProjectile::GetClassType() ) ) {
+			continue;
+		}
+		if ( ent->GetInstance() != viewPlayer->GetInstance() ) {
+			continue;
+		}
+
+		static_cast<idProjectile *>( ent )->UpdatePresentationProjectile();
+	}
+}
+
+/*
+================
+GameLocal_UpdateSceneActiveEntityPresentation
+================
+*/
+static void GameLocal_UpdateSceneActiveEntityPresentation( const idPlayer *viewPlayer ) {
+	if ( viewPlayer == NULL || gameLocal.isNewFrame ) {
+		return;
+	}
+
+	for ( idEntity *ent = gameLocal.activeEntities.Next(); ent != NULL; ent = ent->activeNode.Next() ) {
+		if ( ent->entityNumber >= 0 && ent->entityNumber < MAX_CLIENTS ) {
+			continue;
+		}
+		if ( ent->GetInstance() != viewPlayer->GetInstance() ) {
+			continue;
+		}
+		if ( ent->IsType( idProjectile::GetClassType() ) || ent->IsType( rvViewWeapon::GetClassType() ) ) {
+			continue;
+		}
+
+		idEntity *bindMaster = ent->GetBindMaster();
+		if ( bindMaster != NULL && bindMaster->IsType( idPlayer::GetClassType() ) ) {
+			continue;
+		}
+
+		ent->UpdatePresentationTransformToRenderWorld();
+		ent->UpdatePresentationNonModelVisuals();
+	}
+}
+
+/*
+================
+GameLocal_UpdateSceneClientEntityPresentation
+================
+*/
+static void GameLocal_UpdateSceneClientEntityPresentation( const idPlayer *viewPlayer ) {
+	if ( viewPlayer == NULL || gameLocal.isNewFrame ) {
+		return;
+	}
+
+	for ( rvClientEntity *ent = gameLocal.clientSpawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
+		idEntity *bindMaster = ent->GetBindMaster().GetEntity();
+		if ( bindMaster != NULL && bindMaster->GetInstance() != viewPlayer->GetInstance() ) {
+			continue;
+		}
+
+		ent->UpdatePresentation();
+	}
+}
+
+/*
+================
 idGameLocal::Draw
 
 makes rendering and sound system calls
@@ -4085,17 +4159,15 @@ bool idGameLocal::Draw( int clientNum ) {
 		return false;
 	}
 
-// RAVEN BEGIN
-// mwhitlock: Xenon texture streaming.
-#if defined(_XENON)
-	renderView_t *view = player->GetRenderView();
-	// nrausch: view doesn't necessarily exist yet
-	if ( !view ) {
-		player->CalculateRenderView();
-		view = player->GetRenderView();
+	player->CalculateRenderView();
+	player->UpdatePresentationEntities();
+	GameLocal_UpdateSceneProjectilePresentation( player );
+	GameLocal_UpdateSceneActiveEntityPresentation( player );
+	if ( player->weaponViewModel.GetEntity() ) {
+		player->weaponViewModel->UpdatePresentationWeapon( player->CanShowWeaponViewmodel() );
 	}
-#endif
-// RAVEN END
+	GameLocal_UpdateSceneClientEntityPresentation( player );
+
 	// render the scene
 	player->playerView.RenderPlayerView( player->hud );
 
@@ -4286,6 +4358,9 @@ void idGameLocal::CheckAutoScreenshot( void ) {
 
 	renderSystem->CaptureRenderToFile( shotName.c_str(), true );
 	common->Printf( "AutoScreenshot: wrote %s at %d ms\n", shotName.c_str(), nowMs - autoScreenshotStartTime );
+	if ( cvarSystem->GetCVarInteger( "com_showFramePacing" ) >= 2 ) {
+		common->PrintFramePacingSnapshot( "autoscreenshot" );
+	}
 	if ( g_autoScreenshotQuit.GetBool() ) {
 		cmdSystem->BufferCommandText( CMD_EXEC_APPEND, "quit\n" );
 	}
@@ -6042,10 +6117,14 @@ void idGameLocal::AlertAI( idEntity *ent ) {
 		if ( ent->IsType( idActor::GetClassType() ) ) {
 // RAVEN END
 			// alert them for the next frame
-			lastAIAlertActorTime = time + GetMSec();
+			lastAIAlertActorTime = ( GetMHz() == common->GetUserCmdHz() )
+				? common->GetUserCmdTime( GetFrameNum() + 1 )
+				: time + GetMSec();
 			lastAIAlertActor = static_cast<idActor *>( ent );
 		} else {
-			lastAIAlertEntityTime = time + GetMSec();
+			lastAIAlertEntityTime = ( GetMHz() == common->GetUserCmdHz() )
+				? common->GetUserCmdTime( GetFrameNum() + 1 )
+				: time + GetMSec();
 			lastAIAlertEntity = ent;
 		}
 	} else {
@@ -6589,7 +6668,9 @@ void idGameLocal::SetCamera( idCamera *cam ) {
 
 	} else {
 		inCinematic = false;
-		cinematicStopTime = time + msec;
+		cinematicStopTime = ( GetMHz() == common->GetUserCmdHz() )
+			? common->GetUserCmdTime( GetFrameNum() + 1 )
+			: time + msec;
 
 		// restore r_znear
 		cvarSystem->SetCVarFloat( "r_znear", 3.0f );

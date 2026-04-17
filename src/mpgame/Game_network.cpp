@@ -29,7 +29,7 @@ idCVar net_clientShowSnapshot( "net_clientShowSnapshot", "0", CVAR_GAME | CVAR_I
 idCVar net_clientShowSnapshotRadius( "net_clientShowSnapshotRadius", "128", CVAR_GAME | CVAR_FLOAT, "" );
 idCVar net_clientMaxPrediction( "net_clientMaxPrediction", "1000", CVAR_SYSTEM | CVAR_INTEGER | CVAR_NOCHEAT, "maximum number of milliseconds a client can predict ahead of server." );
 idCVar net_clientLagOMeter( "net_clientLagOMeter", "0", CVAR_GAME | CVAR_BOOL | CVAR_NOCHEAT | PC_CVAR_ARCHIVE, "draw prediction graph" );
-idCVar net_clientLagOMeterResolution( "net_clientLagOMeterResolution", "16", CVAR_GAME | CVAR_INTEGER | CVAR_NOCHEAT | PC_CVAR_ARCHIVE, "resolution for predict ahead graph (upper part of lagometer)", 1, 100 );
+idCVar net_clientLagOMeterResolution( "net_clientLagOMeterResolution", "16", CVAR_GAME | CVAR_INTEGER | CVAR_NOCHEAT | PC_CVAR_ARCHIVE, "resolution for predict ahead graph (upper part of lagometer, legacy value 16 follows one exact base tic)", 1, 100 );
 
 // RAVEN BEGIN
 // ddynerman: performance profiling
@@ -910,6 +910,16 @@ void idGameLocal::WriteSnapshot( snapshot_t *&clientSnapshot, entityState_t *ent
 		deltaMsg.InitWriting( base ? &base->state : NULL, &newBase->state, &msg );
 
 		deltaMsg.WriteBits( spawnIds[ ent->entityNumber ], 32 - GENTITYNUM_BITS );
+		if ( ent->entityDefNumber <= 0 ) {
+			Warning( "WriteSnapshotToClient: entity %d '%s' type '%s' has invalid entityDefNumber %d",
+				ent->entityNumber,
+				ent->name.c_str(),
+				ent->GetClassname(),
+				ent->entityDefNumber );
+			msg.RestoreWriteState( msgSize, msgWriteBit );
+			entityStateAllocator.Free( newBase );
+			continue;
+		}
 		assert( ent->entityDefNumber > 0 );
 		deltaMsg.WriteBits( ent->entityDefNumber, entityDefBits );
 
@@ -1548,7 +1558,9 @@ void idGameLocal::ClientReadSnapshot( int clientNum, int snapshotSequence, const
 	// update the game time
 	framenum = gameFrame;
 	time = gameTime;
-	previousTime = time - GetMSec();
+	previousTime = common->GetUserCmdTime( framenum - 1 );
+	msec = time - previousTime;
+	mHz = common->GetUserCmdHz();
 
 	isNewFrame = true;
 
@@ -2467,7 +2479,9 @@ gameReturn_t idGameLocal::ClientPrediction( int clientNum, const usercmd_t *clie
 	// update the game time
 	framenum++;
 	previousTime = time;
-	time += GetMSec();
+	time = common->GetUserCmdTime( framenum );
+	msec = time - previousTime;
+	mHz = common->GetUserCmdHz();
 
 	// update the real client time and the new frame flag
 	if ( time > realClientTime ) {

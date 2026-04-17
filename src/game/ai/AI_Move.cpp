@@ -19,6 +19,16 @@ further changes to the system possible.
 #include "AI_Util.h"
 #include "AAS_Find.h"
 
+namespace {
+ID_INLINE int GameLocal_PreviousFrameTime() {
+	if ( gameLocal.GetMHz() == common->GetUserCmdHz() ) {
+		const int previousFrame = gameLocal.GetFrameNum() - 1;
+		return ( previousFrame > 0 ) ? common->GetUserCmdTime( previousFrame ) : 0;
+	}
+	return gameLocal.GetTime() - gameLocal.GetMSec();
+}
+}
+
 /*
 ===============================================================================
 
@@ -1982,7 +1992,7 @@ void idAI::GetAnimMoveDelta( const idMat3 &oldaxis, const idMat3 &axis, idVec3 &
 	idVec3 oldModelOrigin;
 	idVec3 modelOrigin;
 
-	animator.GetDelta( gameLocal.time - gameLocal.msec, gameLocal.time, delta );
+	animator.GetDelta( GameLocal_PreviousFrameTime(), gameLocal.time, delta );
 	delta = axis * delta;
 
 	if ( modelOffset != vec3_zero ) {

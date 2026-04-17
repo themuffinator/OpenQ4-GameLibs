@@ -835,6 +835,7 @@ private:
 	void			FreeLight ( int lightID );
 	void			UpdateLight ( int lightID, idPlayer *player );
 	void			CheckSpecialLights( void );
+	void			UpdatePresentationSpecialLights( const idPlayer *viewPlayer );
 	void			ForceReady();
 	// when clients disconnect or join spectate during game, check if we need to end the game
 	void			CheckAbortGame( void );

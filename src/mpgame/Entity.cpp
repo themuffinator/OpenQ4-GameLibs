@@ -18,6 +18,37 @@
 ===============================================================================
 */
 
+static int Entity_GetPresentationTime( void ) {
+	return Sys_Milliseconds();
+}
+
+static float Entity_GetPresentationInterpolationFraction( void ) {
+	if ( gameLocal.GetDemoState() == DEMO_PLAYING || gameLocal.IsTimeDemo() ) {
+		return 1.0f;
+	}
+
+	const float ticMsec = common->GetUserCmdMsecFloat();
+	if ( ticMsec <= 0.0f ) {
+		return 1.0f;
+	}
+
+	return idMath::ClampFloat( 0.0f, 1.0f,
+		static_cast<float>( Entity_GetPresentationTime() - gameLocal.GetTime() ) / ticMsec );
+}
+
+static idMat3 Entity_InterpolateAxis( const idMat3 &from, const idMat3 &to, float fraction ) {
+	if ( fraction <= 0.0f ) {
+		return from;
+	}
+	if ( fraction >= 1.0f ) {
+		return to;
+	}
+
+	idQuat blended;
+	blended.Slerp( from.ToQuat(), to.ToQuat(), fraction );
+	return blended.ToMat3();
+}
+
 // overridable events
 const idEventDef EV_PostSpawn( "<postspawn>", NULL );
 const idEventDef EV_FindTargets( "<findTargets>", NULL );
@@ -508,6 +539,11 @@ idEntity::idEntity() {
 
 	memset( &renderEntity, 0, sizeof( renderEntity ) );
 	modelDefHandle	= -1;
+	presentationTransformTime = -1;
+	presentationPrevOrigin = vec3_zero;
+	presentationPrevAxis = mat3_identity;
+	presentationCurOrigin = vec3_zero;
+	presentationCurAxis = mat3_identity;
 	memset( &refSound, 0, sizeof( refSound ) );
 	refSound.referenceSoundHandle = -1;
 
@@ -585,7 +621,7 @@ void idEntity::Spawn( void ) {
 // RAVEN END
 
 	// go dormant within 5 frames so that when the map starts most monsters are dormant
-	dormantStart = gameLocal.time - DELAY_DORMANT_TIME + gameLocal.msec * 5;
+	dormantStart = gameLocal.time - DELAY_DORMANT_TIME + common->GetUserCmdMsecForTics( 5 );
 
 	origin = renderEntity.origin;
 	axis = renderEntity.axis;
@@ -879,6 +915,11 @@ void idEntity::Restore( idRestoreGame *savefile ) {
 	savefile->ReadRenderEntity( renderEntity, &spawnArgs );
 // RAVEN END
 	savefile->ReadInt( modelDefHandle );
+	presentationTransformTime = gameLocal.time;
+	presentationPrevOrigin = renderEntity.origin;
+	presentationPrevAxis = renderEntity.axis;
+	presentationCurOrigin = renderEntity.origin;
+	presentationCurAxis = renderEntity.axis;
 	savefile->ReadRefSound( refSound );
 	
 // RAVEN BEGIN
@@ -1380,6 +1421,57 @@ void idEntity::Show( void ) {
 
 /*
 ================
+idEntity::UpdatePresentationTransformState
+================
+*/
+void idEntity::UpdatePresentationTransformState( void ) {
+	if ( presentationTransformTime < 0 ) {
+		presentationTransformTime = gameLocal.time;
+		presentationPrevOrigin = renderEntity.origin;
+		presentationPrevAxis = renderEntity.axis;
+		presentationCurOrigin = renderEntity.origin;
+		presentationCurAxis = renderEntity.axis;
+		return;
+	}
+
+	if ( presentationTransformTime != gameLocal.time ) {
+		presentationPrevOrigin = presentationCurOrigin;
+		presentationPrevAxis = presentationCurAxis;
+		presentationTransformTime = gameLocal.time;
+	}
+
+	presentationCurOrigin = renderEntity.origin;
+	presentationCurAxis = renderEntity.axis;
+}
+
+/*
+================
+idEntity::GetPresentationTransform
+================
+*/
+void idEntity::GetPresentationTransform( idVec3 &origin, idMat3 &axis ) const {
+	if ( presentationTransformTime < 0 ) {
+		origin = renderEntity.origin;
+		axis = renderEntity.axis;
+		return;
+	}
+
+	const float fraction = Entity_GetPresentationInterpolationFraction();
+	origin.Lerp( presentationPrevOrigin, presentationCurOrigin, fraction );
+	axis = Entity_InterpolateAxis( presentationPrevAxis, presentationCurAxis, fraction );
+}
+
+/*
+================
+idEntity::GetPresentationTransformForView
+================
+*/
+void idEntity::GetPresentationTransformForView( idVec3 &origin, idMat3 &axis ) const {
+	GetPresentationTransform( origin, axis );
+}
+
+/*
+================
 idEntity::UpdateModelTransform
 ================
 */
@@ -1394,6 +1486,8 @@ void idEntity::UpdateModelTransform( void ) {
 		renderEntity.axis = GetPhysics()->GetAxis();
 		renderEntity.origin = GetPhysics()->GetOrigin();
 	}
+
+	UpdatePresentationTransformState();
 }
 
 /*
@@ -1435,6 +1529,57 @@ idEntity::UpdateVisuals
 void idEntity::UpdateVisuals( void ) {
 	UpdateModel();
 	UpdateSound();
+}
+
+/*
+================
+idEntity::UpdatePresentationTransformToRenderWorld
+================
+*/
+void idEntity::UpdatePresentationTransformToRenderWorld( void ) {
+	if ( gameLocal.isNewFrame ) {
+		return;
+	}
+
+// RAVEN BEGIN
+// ddynerman: don't render objects not in our instance (only on server)
+	if ( gameLocal.isServer && gameLocal.GetLocalPlayer() && gameLocal.GetLocalPlayer()->GetInstance() != GetInstance() ) {
+		FreeModelDef();
+		return;
+	}
+// RAVEN END
+
+	// don't render server demo stuff that's not in our instance
+	if ( gameLocal.IsServerDemoPlaying() ) {
+		if ( instance != 0 ) {
+			FreeModelDef();
+			return;
+		}
+	}
+
+	if ( !renderEntity.hModel || IsHidden() ) {
+		return;
+	}
+
+	renderEntity_t presentationRenderEntity = renderEntity;
+	if ( cameraTarget ) {
+		presentationRenderEntity.remoteRenderView = cameraTarget->GetRenderView();
+	}
+	GetPresentationTransform( presentationRenderEntity.origin, presentationRenderEntity.axis );
+
+	if ( modelDefHandle == -1 ) {
+		modelDefHandle = gameRenderWorld->AddEntityDef( &presentationRenderEntity );
+	} else {
+		gameRenderWorld->UpdateEntityDef( modelDefHandle, &presentationRenderEntity );
+	}
+}
+
+/*
+================
+idEntity::UpdatePresentationNonModelVisuals
+================
+*/
+void idEntity::UpdatePresentationNonModelVisuals( void ) {
 }
 
 /*
@@ -6471,6 +6616,33 @@ bool idAnimatedEntity::GetJointWorldTransform( jointHandle_t jointHandle, int cu
 	}
 
 	ConvertLocalToWorldTransform( offset, axis );
+	return true;
+}
+
+/*
+=====================
+idAnimatedEntity::GetPresentationJointWorldTransform
+=====================
+*/
+bool idAnimatedEntity::GetPresentationJointWorldTransform( jointHandle_t jointHandle, int currentTime, idVec3 &offset, idMat3 &axis ) {
+	if ( g_perfTest_noJointTransform.GetBool() ) {
+		idVec3 presentationOrigin;
+		idMat3 presentationAxis;
+		GetPresentationTransformForView( presentationOrigin, presentationAxis );
+		offset = presentationOrigin + ( GetPhysics()->GetCenterMass() - GetPhysics()->GetOrigin() ) * presentationAxis;
+		axis = presentationAxis;
+		return true;
+	}
+
+	if ( !animator.GetJointTransform( jointHandle, currentTime, offset, axis ) ) {
+		return false;
+	}
+
+	idVec3 presentationOrigin;
+	idMat3 presentationAxis;
+	GetPresentationTransformForView( presentationOrigin, presentationAxis );
+	offset = presentationOrigin + offset * presentationAxis;
+	axis *= presentationAxis;
 	return true;
 }
 

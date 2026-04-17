@@ -18,6 +18,7 @@ public:
 	void					Restore				( idRestoreGame *savefile );
 		
 	virtual void			Think				( void );
+	virtual void			UpdatePresentationNonModelVisuals( void );
 	
 	virtual	void			Damage				( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, const char *damageDefName, const float damageScale, const int location );
 	virtual void			OnDeath				( void );
@@ -151,6 +152,39 @@ void rvMonsterHeavyHoverTank::Think ( void ) {
 			effectDust->Stop ( );
 			effectDust = NULL;
 		}
+	}
+}
+
+/*
+================
+rvMonsterHeavyHoverTank::UpdatePresentationNonModelVisuals
+================
+*/
+void rvMonsterHeavyHoverTank::UpdatePresentationNonModelVisuals( void ) {
+	idAI::UpdatePresentationNonModelVisuals();
+
+	if ( gameLocal.isNewFrame || jointHoverEffect == INVALID_JOINT || fl.hidden || fl.isDormant || !( thinkFlags & TH_THINK ) || aifl.dead ) {
+		return;
+	}
+
+	trace_t tr;
+	idVec3 origin;
+	idMat3 axis;
+	GetPresentationJointWorldTransform( jointHoverEffect, Sys_Milliseconds(), origin, axis );
+	gameLocal.TracePoint( this, tr, origin, origin + axis[0] * 128.0f, CONTENTS_SOLID, this );
+
+	if ( tr.fraction >= 1.0f ) {
+		return;
+	}
+
+	if ( effectDust ) {
+		effectDust->Attenuate( 1.0f - idMath::ClampFloat( 0.0f, 1.0f, ( tr.endpos - origin ).LengthFast() / 127.0f ) );
+		effectDust->SetOrigin( tr.endpos );
+		effectDust->SetAxis( tr.c.normal.ToMat3() );
+	}
+
+	if ( effectHover ) {
+		effectHover->SetEndOrigin( tr.endpos );
 	}
 }
 

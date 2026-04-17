@@ -55,6 +55,7 @@ public :
 	float					GetSpeed		( void ) const;
 
 	virtual void			UpdateVisualAngles();
+	void					UpdatePresentationProjectile( void );
 
 	// information about what kind of projectile we are, used for death messages
 	int						methodOfDeath;
@@ -67,6 +68,9 @@ public :
 	
 protected:
 	void					SpawnImpactEntities(const trace_t& collision, const idVec3 projectileDirection);
+	void					UpdatePresentationLightState( void );
+	void					UpdatePresentationFlyEffectState( float attenuation );
+	float					GetFlyEffectAttenuation( void ) const;
 
 
 	idEntityPtr<idEntity>	owner;
@@ -87,6 +91,11 @@ protected:
 	int						lightStartTime;
 	int						lightEndTime;
 	idVec3					lightColor;
+	int						presentationLightTime;
+	idVec3					presentationPrevLightOrigin;
+	idMat3					presentationPrevLightAxis;
+	idVec3					presentationCurLightOrigin;
+	idMat3					presentationCurLightAxis;
 
 	idEntity*				impactedEntity;
 
@@ -100,6 +109,9 @@ protected:
 
 	rvClientEffectPtr		flyEffect;
 	float					flyEffectAttenuateSpeed;
+	int						presentationFlyEffectTime;
+	float					presentationPrevFlyEffectAttenuation;
+	float					presentationCurFlyEffectAttenuation;
 
 	int						bounceCount;
 	bool					sticky;

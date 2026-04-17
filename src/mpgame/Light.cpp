@@ -901,6 +901,25 @@ void idLight::Present( void ) {
 
 /*
 ================
+idLight::UpdatePresentationNonModelVisuals
+================
+*/
+void idLight::UpdatePresentationNonModelVisuals( void ) {
+	if ( gameLocal.isNewFrame || lightDefHandle == -1 || IsHidden() ) {
+		return;
+	}
+
+	renderLight_t presentationRenderLight = renderLight;
+	idVec3 presentationOrigin;
+	idMat3 presentationAxis;
+	GetPresentationTransformForView( presentationOrigin, presentationAxis );
+	presentationRenderLight.axis = localLightAxis * presentationAxis;
+	presentationRenderLight.origin = presentationOrigin + presentationAxis * localLightOrigin;
+	gameRenderWorld->UpdateLightDef( lightDefHandle, &presentationRenderLight );
+}
+
+/*
+================
 idLight::Think
 ================
 */

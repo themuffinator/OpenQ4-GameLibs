@@ -1046,6 +1046,42 @@ void idExplodingBarrel::Think( void ) {
 		gameRenderWorld->UpdateEntityDef( ipsHandle, &ipsEntity );
 	}
 }
+
+/*
+================
+idExplodingBarrel::UpdatePresentationNonModelVisuals
+================
+*/
+void idExplodingBarrel::UpdatePresentationNonModelVisuals( void ) {
+	if ( gameLocal.isNewFrame ) {
+		return;
+	}
+
+	idVec3 presentationOrigin;
+	idMat3 presentationAxis;
+	GetPresentationTransformForView( presentationOrigin, presentationAxis );
+
+	const idVec3 presentationCenter = presentationOrigin + physicsObj.GetBounds().GetCenter() * presentationAxis;
+
+	if ( lightHandle >= 0 && state == BURNING ) {
+		const float pct = idMath::ClampFloat( 0.0f, 1.0f, static_cast<float>( Sys_Milliseconds() - lightTime ) / 250.0f );
+		renderLight_t presentationLight = light;
+		presentationLight.origin = presentationCenter;
+		presentationLight.axis = mat3_identity;
+		presentationLight.shaderParms[ SHADERPARM_RED ] = pct;
+		presentationLight.shaderParms[ SHADERPARM_GREEN ] = pct;
+		presentationLight.shaderParms[ SHADERPARM_BLUE ] = pct;
+		presentationLight.shaderParms[ SHADERPARM_ALPHA ] = pct;
+		gameRenderWorld->UpdateLightDef( lightHandle, &presentationLight );
+	}
+
+	if ( ipsHandle >= 0 ) {
+		renderEntity_t presentationIpsEntity = ipsEntity;
+		presentationIpsEntity.origin = presentationCenter;
+		presentationIpsEntity.axis = mat3_identity;
+		gameRenderWorld->UpdateEntityDef( ipsHandle, &presentationIpsEntity );
+	}
+}
    
 /*
 ================

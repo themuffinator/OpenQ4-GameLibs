@@ -19,6 +19,37 @@
 ===============================================================================
 */
 
+static int Projectile_GetPresentationTime( void ) {
+	return Sys_Milliseconds();
+}
+
+static float Projectile_GetPresentationInterpolationFraction( void ) {
+	if ( gameLocal.GetDemoState() == DEMO_PLAYING || gameLocal.IsTimeDemo() ) {
+		return 1.0f;
+	}
+
+	const float ticMsec = common->GetUserCmdMsecFloat();
+	if ( ticMsec <= 0.0f ) {
+		return 1.0f;
+	}
+
+	return idMath::ClampFloat( 0.0f, 1.0f,
+		static_cast<float>( Projectile_GetPresentationTime() - gameLocal.GetTime() ) / ticMsec );
+}
+
+static idMat3 Projectile_InterpolateAxis( const idMat3 &from, const idMat3 &to, float fraction ) {
+	if ( fraction <= 0.0f ) {
+		return from;
+	}
+	if ( fraction >= 1.0f ) {
+		return to;
+	}
+
+	idQuat blended;
+	blended.Slerp( from.ToQuat(), to.ToQuat(), fraction );
+	return blended.ToMat3();
+}
+
 static const float BOUNCE_SOUND_MIN_VELOCITY	= 200.0f;
 static const float BOUNCE_SOUND_MAX_VELOCITY	= 400.0f;
 
@@ -55,6 +86,11 @@ idProjectile::idProjectile( void ) {
 	lightStartTime		= 0;
 	lightEndTime		= 0;
 	lightColor.Zero();
+	presentationLightTime = -1;
+	presentationPrevLightOrigin = vec3_zero;
+	presentationPrevLightAxis = mat3_identity;
+	presentationCurLightOrigin = vec3_zero;
+	presentationCurLightAxis = mat3_identity;
 
 	visualAngles.Zero();
 	angularVelocity.Zero();
@@ -65,6 +101,9 @@ idProjectile::idProjectile( void ) {
 
 	flyEffect			= NULL;
 	flyEffectAttenuateSpeed = 0.0f;
+	presentationFlyEffectTime = -1;
+	presentationPrevFlyEffectAttenuation = 0.0f;
+	presentationCurFlyEffectAttenuation = 0.0f;
 	bounceCount			= 0;
 	hitCount			= 0;
 	state				= SPAWNED;
@@ -174,6 +213,11 @@ void idProjectile::Restore( idRestoreGame *savefile ) {
 	savefile->ReadRenderLight( renderLight );
 
 	savefile->ReadInt( (int &)lightDefHandle );
+	presentationLightTime = gameLocal.time;
+	presentationPrevLightOrigin = renderLight.origin;
+	presentationPrevLightAxis = renderLight.axis;
+	presentationCurLightOrigin = renderLight.origin;
+	presentationCurLightAxis = renderLight.axis;
 	if ( lightDefHandle != -1 ) {
 		//get the handle again as it's out of date after a restore!
 		lightDefHandle = gameRenderWorld->AddLightDef( &renderLight );
@@ -512,6 +556,13 @@ void idProjectile::Launch( const idVec3 &start, const idVec3 &dir, const idVec3 
 		}
 	}
 	flyEffectAttenuateSpeed = spawnArgs.GetFloat( "flyEffectAttenuateSpeed", "0" );
+	if ( flyEffect && flyEffectAttenuateSpeed > 0.0f ) {
+		const float attenuation = GetFlyEffectAttenuation();
+		flyEffect->Attenuate( attenuation );
+		UpdatePresentationFlyEffectState( attenuation );
+	} else {
+		presentationFlyEffectTime = -1;
+	}
 
 	state = LAUNCHED;
 
@@ -579,11 +630,12 @@ void idProjectile::Think( void ) {
 		if ( flyEffect && flyEffectAttenuateSpeed > 0.0f ) {
 			if ( physicsObj.IsAtRest( ) ) {
 				flyEffect->Stop( );
-				flyEffect = NULL;				
+				flyEffect = NULL;
+				presentationFlyEffectTime = -1;
 			} else {
-				float speed;
-				speed = idMath::ClampFloat( 0, flyEffectAttenuateSpeed, physicsObj.GetLinearVelocity ( ).LengthFast ( ) );
-				flyEffect->Attenuate( speed / flyEffectAttenuateSpeed );
+				const float attenuation = GetFlyEffectAttenuation();
+				flyEffect->Attenuate( attenuation );
+				UpdatePresentationFlyEffectState( attenuation );
 			}
 		}
 
@@ -596,8 +648,12 @@ void idProjectile::Think( void ) {
  	if ( renderLight.lightRadius.x > 0.0f && g_projectileLights.GetBool() ) {
 		renderLight.origin = GetPhysics()->GetOrigin() + GetPhysics()->GetAxis() * lightOffset;
 		renderLight.axis = GetPhysics()->GetAxis();
+		UpdatePresentationLightState();
 		if ( ( lightDefHandle != -1 ) ) {
-			if ( lightEndTime > 0 && gameLocal.time <= lightEndTime + gameLocal.GetMSec() ) {
+			const int lightGraceTime = ( gameLocal.GetMHz() == common->GetUserCmdHz() )
+				? common->GetUserCmdTimeAfterMsec( lightEndTime, 1 )
+				: lightEndTime + gameLocal.GetMSec();
+			if ( lightEndTime > 0 && gameLocal.time <= lightGraceTime ) {
 				idVec3 color( 0, 0, 0 );
 				if ( gameLocal.time < lightEndTime ) {
 					float frac = ( float )( gameLocal.time - lightStartTime ) / ( float )( lightEndTime - lightStartTime );
@@ -611,6 +667,99 @@ void idProjectile::Think( void ) {
 		} else {
 			lightDefHandle = gameRenderWorld->AddLightDef( &renderLight );
 		}
+	}
+}
+
+/*
+================
+idProjectile::UpdatePresentationLightState
+================
+*/
+void idProjectile::UpdatePresentationLightState( void ) {
+	if ( presentationLightTime < 0 ) {
+		presentationLightTime = gameLocal.time;
+		presentationPrevLightOrigin = renderLight.origin;
+		presentationPrevLightAxis = renderLight.axis;
+		presentationCurLightOrigin = renderLight.origin;
+		presentationCurLightAxis = renderLight.axis;
+		return;
+	}
+
+	if ( presentationLightTime != gameLocal.time ) {
+		presentationPrevLightOrigin = presentationCurLightOrigin;
+		presentationPrevLightAxis = presentationCurLightAxis;
+		presentationLightTime = gameLocal.time;
+	}
+
+	presentationCurLightOrigin = renderLight.origin;
+	presentationCurLightAxis = renderLight.axis;
+}
+
+/*
+================
+idProjectile::GetFlyEffectAttenuation
+================
+*/
+float idProjectile::GetFlyEffectAttenuation( void ) const {
+	if ( flyEffect == NULL || flyEffectAttenuateSpeed <= 0.0f ) {
+		return 0.0f;
+	}
+
+	const float speed = idMath::ClampFloat( 0.0f, flyEffectAttenuateSpeed, physicsObj.GetLinearVelocity().LengthFast() );
+	return speed / flyEffectAttenuateSpeed;
+}
+
+/*
+================
+idProjectile::UpdatePresentationFlyEffectState
+================
+*/
+void idProjectile::UpdatePresentationFlyEffectState( float attenuation ) {
+	if ( presentationFlyEffectTime < 0 ) {
+		presentationFlyEffectTime = gameLocal.time;
+		presentationPrevFlyEffectAttenuation = attenuation;
+		presentationCurFlyEffectAttenuation = attenuation;
+		return;
+	}
+
+	if ( presentationFlyEffectTime != gameLocal.time ) {
+		presentationPrevFlyEffectAttenuation = presentationCurFlyEffectAttenuation;
+		presentationFlyEffectTime = gameLocal.time;
+	}
+
+	presentationCurFlyEffectAttenuation = attenuation;
+}
+
+/*
+================
+idProjectile::UpdatePresentationProjectile
+================
+*/
+void idProjectile::UpdatePresentationProjectile( void ) {
+	if ( gameLocal.isNewFrame ) {
+		return;
+	}
+
+	UpdatePresentationTransformToRenderWorld();
+
+	const float fraction = Projectile_GetPresentationInterpolationFraction();
+	if ( flyEffect != NULL && flyEffectAttenuateSpeed > 0.0f && state == LAUNCHED ) {
+		if ( presentationFlyEffectTime < 0 ) {
+			UpdatePresentationFlyEffectState( GetFlyEffectAttenuation() );
+		}
+
+		flyEffect->Attenuate( idMath::Lerp( presentationPrevFlyEffectAttenuation, presentationCurFlyEffectAttenuation, fraction ) );
+	}
+
+	if ( lightDefHandle != -1 && renderLight.lightRadius.x > 0.0f && g_projectileLights.GetBool() ) {
+		if ( presentationLightTime < 0 ) {
+			UpdatePresentationLightState();
+		}
+
+		renderLight_t presentationRenderLight = renderLight;
+		presentationRenderLight.origin.Lerp( presentationPrevLightOrigin, presentationCurLightOrigin, fraction );
+		presentationRenderLight.axis = Projectile_InterpolateAxis( presentationPrevLightAxis, presentationCurLightAxis, fraction );
+		gameRenderWorld->UpdateLightDef( lightDefHandle, &presentationRenderLight );
 	}
 }
 
@@ -1153,6 +1302,8 @@ void idProjectile::Fizzle( void ) {
 	if( flyEffect)	{
 		//flyEffect->Event_Remove();
 	}
+	flyEffect = NULL;
+	presentationFlyEffectTime = -1;
 
 	Hide();
 	FreeLightDef();
@@ -1163,7 +1314,10 @@ void idProjectile::Fizzle( void ) {
 	
 	if ( predictedProjectiles ) {
 		// ensure the projectile makes it in to at least one snapshot
-		int snapshotTime = gameLocal.GetMSec() + cvarSystem->GetCVarInteger( "net_serverSnapshotDelay" );	if ( removeTime < snapshotTime )
+		const int nextSnapshotDelay = ( gameLocal.GetMHz() == common->GetUserCmdHz() )
+			? common->GetUserCmdTime( gameLocal.GetFrameNum() + 1 ) - gameLocal.GetTime()
+			: gameLocal.GetMSec();
+		int snapshotTime = nextSnapshotDelay + cvarSystem->GetCVarInteger( "net_serverSnapshotDelay" );
 		if ( removeTime < snapshotTime ) {
 			removeTime = snapshotTime;
 		}
@@ -1260,6 +1414,8 @@ void idProjectile::Explode( const trace_t *collision, const bool showExplodeFX, 
 
 	// Stop the fly effect without destroying particles to ensure the trail within can persist.
 	StopEffect( "fx_fly" );	
+	flyEffect = NULL;
+	presentationFlyEffectTime = -1;
 	
 	// Stop the remaining particles
 	StopAllEffects( );
@@ -1295,7 +1451,10 @@ void idProjectile::Explode( const trace_t *collision, const bool showExplodeFX, 
 		removeTime = spawnArgs.GetInt( "detonate_remove_time", "0" );
 	
 		// ensure the projectile makes it in to at least one snapshot
-		int snapshotTime = gameLocal.GetMSec() + cvarSystem->GetCVarInteger( "net_serverSnapshotDelay" );
+		const int nextSnapshotDelay = ( gameLocal.GetMHz() == common->GetUserCmdHz() )
+			? common->GetUserCmdTime( gameLocal.GetFrameNum() + 1 ) - gameLocal.GetTime()
+			: gameLocal.GetMSec();
+		int snapshotTime = nextSnapshotDelay + cvarSystem->GetCVarInteger( "net_serverSnapshotDelay" );
 		if ( removeTime < snapshotTime ) {
 			removeTime = snapshotTime;
 		}

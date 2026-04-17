@@ -32,6 +32,7 @@ public:
 	virtual int				FilterTactical		( int availableTactical );
 
 	virtual void			GetDebugInfo		( debugInfoProc_t proc, void* userData );
+	virtual void			UpdatePresentationNonModelVisuals( void );
 
 	virtual void			Hide( void );
 	virtual void			Show( void );
@@ -440,6 +441,47 @@ void rvMonsterStroggHover::UpdateLightDef ( void ) {
 			gameRenderWorld->UpdateLightDef( lightHandle, &renderLight );	
 		}
 	}
+}
+
+/*
+================
+rvMonsterStroggHover::UpdatePresentationNonModelVisuals
+================
+*/
+void rvMonsterStroggHover::UpdatePresentationNonModelVisuals( void ) {
+	if ( gameLocal.isNewFrame ) {
+		return;
+	}
+
+	const int presentationTime = Sys_Milliseconds();
+	if ( lightHandle != -1 && jointHeadlight != INVALID_JOINT ) {
+		idVec3 origin;
+		idMat3 axis;
+		GetPresentationJointWorldTransform( jointHeadlight, presentationTime, origin, axis );
+
+		renderLight_t presentationRenderLight = renderLight;
+		presentationRenderLight.origin = origin;
+		presentationRenderLight.axis = axis;
+		gameRenderWorld->UpdateLightDef( lightHandle, &presentationRenderLight );
+	}
+
+	if ( !effectDust || jointDust == INVALID_JOINT || fl.hidden || fl.isDormant || !( thinkFlags & TH_THINK ) || aifl.dead ) {
+		return;
+	}
+
+	trace_t tr;
+	idVec3 origin;
+	idMat3 axis;
+	GetPresentationJointWorldTransform( jointDust, presentationTime, origin, axis );
+	gameLocal.TracePoint( this, tr, origin, origin + axis[0] * ( GetPhysics()->GetBounds()[0][2] + 80.0f ), CONTENTS_SOLID, this );
+
+	if ( tr.fraction >= 1.0f ) {
+		return;
+	}
+
+	effectDust->Attenuate( 1.0f - idMath::ClampFloat( 0.0f, 1.0f, ( tr.endpos - origin ).LengthFast() / 127.0f ) );
+	effectDust->SetOrigin( tr.endpos );
+	effectDust->SetAxis( tr.c.normal.ToMat3() );
 }
 
 /*

@@ -186,7 +186,7 @@ typedef enum {
 // RAVEN BEGIN
 // rjohnson: new joystick code
 #define MAX_AXIS_RANGE	127
-#define JOY_TO_CURSOR_SPEED		( idMath::M_MS2SEC * common->GetUserCmdMSec() * 1.5f * 140.f )
+#define JOY_TO_CURSOR_SPEED		( common->GetUserCmdSec() * 1.5f * 140.f )
 
 typedef enum {
 	AXIS_LEFT_HORIZONTAL,

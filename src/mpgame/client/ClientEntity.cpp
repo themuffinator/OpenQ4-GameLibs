@@ -96,6 +96,14 @@ void rvClientEntity::Think ( void ) {
 
 /*
 ================
+rvClientEntity::UpdatePresentation
+================
+*/
+void rvClientEntity::UpdatePresentation( void ) {
+}
+
+/*
+================
 rvClientEntity::Bind
 ================
 */
@@ -168,17 +176,36 @@ rvClientEntity::UpdateBind
 ================
 */
 void rvClientEntity::UpdateBind ( void ) {
+	UpdateBindAtTime( gameLocal.time );
+}
+
+/*
+================
+rvClientEntity::UpdateBindAtTime
+================
+*/
+void rvClientEntity::UpdateBindAtTime( int currentTime ) {
 	if ( !bindMaster ) {
 		return;
 	}
 
+	const bool usePresentationTransforms = !gameLocal.isNewFrame && !bindMaster->IsType( rvViewWeapon::GetClassType() );
 	if ( bindJoint != INVALID_JOINT ) {
-		static_cast<idAnimatedEntity*>(bindMaster.GetEntity())->GetJointWorldTransform ( bindJoint, gameLocal.time, worldOrigin, worldAxis );
+		idAnimatedEntity *animatedMaster = static_cast<idAnimatedEntity *>( bindMaster.GetEntity() );
+		if ( usePresentationTransforms ) {
+			animatedMaster->GetPresentationJointWorldTransform( bindJoint, currentTime, worldOrigin, worldAxis );
+		} else {
+			animatedMaster->GetJointWorldTransform( bindJoint, currentTime, worldOrigin, worldAxis );
+		}
 	} else {
-		bindMaster->GetPosition( worldOrigin, worldAxis );
-		//if ( !bindMaster->GetPhysicsToVisualTransform( worldOrigin, worldAxis ) ) {
-		//	bindMaster->GetPosition( worldOrigin, worldAxis );
-		//}
+		if ( usePresentationTransforms ) {
+			bindMaster->GetPresentationTransformForView( worldOrigin, worldAxis );
+		} else {
+			bindMaster->GetPosition( worldOrigin, worldAxis );
+			//if ( !bindMaster->GetPhysicsToVisualTransform( worldOrigin, worldAxis ) ) {
+			//	bindMaster->GetPosition( worldOrigin, worldAxis );
+			//}
+		}
 	}
 
 	worldOrigin += (bindOrigin * worldAxis);

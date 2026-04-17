@@ -12,6 +12,16 @@
 #include "../Game_local.h"
 #include "ClientModel.h"
 
+namespace {
+ID_INLINE int ClientModel_GetPresentationTime( void ) {
+	if ( gameLocal.isNewFrame ) {
+		return gameLocal.GetTime();
+	}
+
+	return Sys_Milliseconds();
+}
+}
+
 /*
 ===============================================================================
 
@@ -86,6 +96,26 @@ void rvClientModel::Think ( void ) {
 		return;
 	}
 	UpdateBind();
+	Present();
+}
+
+/*
+================
+rvClientModel::UpdatePresentation
+================
+*/
+void rvClientModel::UpdatePresentation( void ) {
+	if ( gameLocal.isNewFrame || entityDefHandle < 0 ) {
+		return;
+	}
+
+	if ( bindMaster && ( bindMaster->IsHidden() || ( bindMaster->GetRenderEntity()->hModel && bindMaster->GetModelDefHandle() == -1 ) ) ) {
+		return;
+	}
+
+	UpdateBindAtTime( ClientModel_GetPresentationTime() );
+	UpdateModel();
+	UpdateSound();
 	Present();
 }
 

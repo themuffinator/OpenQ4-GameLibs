@@ -5259,6 +5259,7 @@ bool idMultiplayerGame::Draw( int clientNum ) {
 		return false;
 	}
 
+	UpdatePresentationSpecialLights( viewPlayer );
 	SetShaderParms( viewPlayer->GetRenderView() );
 
 	// use the hud of the local player
@@ -6108,6 +6109,76 @@ void idMultiplayerGame::UpdateLight ( int lightID, idPlayer *player ) {
 		lightHandles[ lightID ] = gameRenderWorld->AddLightDef ( &lights[ lightID ] );
 	} else {
 		gameRenderWorld->UpdateLightDef( lightHandles[ lightID ], &lights[ lightID ] );
+	}
+}
+
+void idMultiplayerGame::UpdatePresentationSpecialLights( const idPlayer *viewPlayer ) {
+	if ( gameLocal.isNewFrame || viewPlayer == NULL || gameRenderWorld == NULL ) {
+		return;
+	}
+
+	const idPlayer *lightCarriers[ MPLIGHT_MAX ];
+	memset( lightCarriers, 0, sizeof( lightCarriers ) );
+
+	for ( int i = 0; i < gameLocal.numClients; ++i ) {
+		idEntity *ent = gameLocal.entities[ i ];
+		if ( !ent || !ent->IsType( idPlayer::GetClassType() ) ) {
+			continue;
+		}
+
+		const idPlayer *player = static_cast<const idPlayer *>( ent );
+		if ( player->GetInstance() != viewPlayer->GetInstance() ) {
+			continue;
+		}
+
+		for ( int lightID = 0; lightID < MPLIGHT_MAX; ++lightID ) {
+			if ( lightCarriers[ lightID ] != NULL ) {
+				continue;
+			}
+
+			bool ownsLight = false;
+			switch ( lightID ) {
+				case MPLIGHT_CTF_MARINE:
+					ownsLight = player->PowerUpActive( POWERUP_CTF_MARINEFLAG );
+					break;
+
+				case MPLIGHT_CTF_STROGG:
+					ownsLight = player->PowerUpActive( POWERUP_CTF_STROGGFLAG );
+					break;
+
+				case MPLIGHT_QUAD:
+					ownsLight = player->PowerUpActive( POWERUP_QUADDAMAGE ) || player->PowerUpActive( POWERUP_TEAM_DAMAGE_MOD );
+					break;
+
+				case MPLIGHT_HASTE:
+					ownsLight = player->PowerUpActive( POWERUP_HASTE );
+					break;
+
+				case MPLIGHT_REGEN:
+					ownsLight = player->PowerUpActive( POWERUP_REGENERATION );
+					break;
+			}
+
+			if ( !ownsLight ) {
+				continue;
+			}
+
+			lightCarriers[ lightID ] = player;
+		}
+	}
+
+	for ( int lightID = 0; lightID < MPLIGHT_MAX; ++lightID ) {
+		if ( lightHandles[ lightID ] == -1 || lightCarriers[ lightID ] == NULL ) {
+			continue;
+		}
+
+		idVec3 presentationOrigin;
+		idMat3 presentationAxis;
+		lightCarriers[ lightID ]->GetPresentationTransformForView( presentationOrigin, presentationAxis );
+
+		renderLight_t presentationLight = lights[ lightID ];
+		presentationLight.origin = presentationOrigin + idVec3( 0, 0, 20 );
+		gameRenderWorld->UpdateLightDef( lightHandles[ lightID ], &presentationLight );
 	}
 }
 

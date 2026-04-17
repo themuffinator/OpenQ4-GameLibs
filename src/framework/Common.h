@@ -206,6 +206,38 @@ public:
 
 	virtual int					GetUserCmdMSec( void ) const = 0;
 
+	int GetUserCmdMsecNumerator( void ) const { return 1000; }
+	int GetUserCmdMsecDenominator( void ) const { return GetUserCmdHz(); }
+	float GetUserCmdMsecFloat( void ) const { return static_cast<float>( GetUserCmdMsecNumerator() ) / static_cast<float>( GetUserCmdMsecDenominator() ); }
+	float GetUserCmdSec( void ) const { return 1.0f / static_cast<float>( GetUserCmdHz() ); }
+	int GetUserCmdTime( int ticNumber ) const {
+		if ( ticNumber <= 0 ) {
+			return 0;
+		}
+		return static_cast<int>( ( static_cast<long long>( ticNumber ) * GetUserCmdMsecNumerator() ) / GetUserCmdMsecDenominator() );
+	}
+	int GetUserCmdDeltaMsec( int ticNumber ) const {
+		return GetUserCmdTime( ticNumber ) - GetUserCmdTime( ticNumber - 1 );
+	}
+	int GetUserCmdTicsForMsecFloor( int msec ) const {
+		if ( msec <= 0 ) {
+			return 0;
+		}
+		return static_cast<int>( ( static_cast<long long>( msec ) * GetUserCmdMsecDenominator() ) / GetUserCmdMsecNumerator() );
+	}
+	int GetUserCmdTicsForMsecCeil( int msec ) const {
+		if ( msec <= 0 ) {
+			return 0;
+		}
+		return static_cast<int>( ( static_cast<long long>( msec ) * GetUserCmdMsecDenominator() + GetUserCmdMsecNumerator() - 1 ) / GetUserCmdMsecNumerator() );
+	}
+	int GetUserCmdMsecForTics( int ticCount ) const {
+		return GetUserCmdTime( ticCount );
+	}
+	int GetUserCmdTimeAfterMsec( int msec, int ticCount ) const {
+		return GetUserCmdTime( GetUserCmdTicsForMsecCeil( msec ) + ticCount );
+	}
+
 								// Returns com_frameTime - which is 0 if a command is added to the command line
 	virtual int					GetFrameTime( void ) const = 0;
 
@@ -278,6 +310,9 @@ public:
 
 								// Same as Printf, with a more usable API - Printf pipes to this.
 	virtual void				VPrintf( const char *fmt, va_list arg ) = 0;
+
+								// Prints the current frame-pacing diagnostics summary immediately.
+	virtual void				PrintFramePacingSnapshot( const char *reason = NULL ) = 0;
 
 								// Prints message that only shows up if the "developer" cvar is set,
 								// and NEVER forces a screen update, which could cause reentrancy problems.

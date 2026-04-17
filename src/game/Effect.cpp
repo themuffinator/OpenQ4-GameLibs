@@ -98,6 +98,21 @@ void rvEffect::Think( void ) {
 
 /*
 ================
+rvEffect::UpdatePresentationNonModelVisuals
+================
+*/
+void rvEffect::UpdatePresentationNonModelVisuals( void ) {
+	idEntity::UpdatePresentationNonModelVisuals();
+
+	if ( gameLocal.isNewFrame || !lookAtTarget ) {
+		return;
+	}
+
+	UpdateLookAtTargetEffect( true );
+}
+
+/*
+================
 rvEffect::Save
 ================
 */
@@ -354,25 +369,49 @@ Reorients the effect entity towards its target and sets the end origin as well
 ================
 */
 void rvEffect::Event_LookAtTarget ( void ) {
-	const idKeyValue	*kv;
-	idVec3				dir;		
+	UpdateLookAtTargetEffect( false );
+}
+
+/*
+================
+rvEffect::UpdateLookAtTargetEffect
+================
+*/
+void rvEffect::UpdateLookAtTargetEffect( bool presentationSample ) {
+	const idKeyValue* kv;
 
 	if ( !effect || !clientEffect ) {
 		return;
 	}
 
+	idVec3 effectOrigin;
+	if ( presentationSample ) {
+		idMat3 effectAxis;
+		GetPresentationTransformForView( effectOrigin, effectAxis );
+	} else {
+		effectOrigin = GetPhysics()->GetOrigin();
+	}
+
 	kv = spawnArgs.MatchPrefix( "target", NULL );
-	while( kv ) {
-		idEntity *ent = gameLocal.FindEntity( kv->GetValue() );
-		if( ent ) {
-			if( !idStr::Icmp( ent->GetEntityDefName(), "target_null" ) ) {
-				dir = ent->GetPhysics()->GetOrigin() - GetPhysics()->GetOrigin();
-				dir.Normalize();
-				
-				clientEffect->SetEndOrigin ( ent->GetPhysics()->GetOrigin() );
-				clientEffect->SetAxis ( dir.ToMat3( ) );
-				return;						
+	while ( kv ) {
+		idEntity* ent = gameLocal.FindEntity( kv->GetValue() );
+		if ( ent && !idStr::Icmp( ent->GetEntityDefName(), "target_null" ) ) {
+			idVec3 targetOrigin;
+			if ( presentationSample ) {
+				idMat3 targetAxis;
+				ent->GetPresentationTransformForView( targetOrigin, targetAxis );
+			} else {
+				targetOrigin = ent->GetPhysics()->GetOrigin();
 			}
+
+			idVec3 dir = targetOrigin - effectOrigin;
+			if ( dir.LengthSqr() > 0.0f ) {
+				dir.NormalizeFast();
+				clientEffect->SetAxis( dir.ToMat3() );
+			}
+
+			clientEffect->SetEndOrigin( targetOrigin );
+			return;
 		}
 		kv = spawnArgs.MatchPrefix( "target", kv );
 	}

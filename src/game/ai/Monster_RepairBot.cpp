@@ -35,6 +35,7 @@ public:
 	void					Restore				( idRestoreGame *savefile );
 
 	virtual void			Think				( void );
+	virtual void			UpdatePresentationNonModelVisuals( void );
 
 	virtual void			GetDebugInfo		( debugInfoProc_t proc, void* userData );
 
@@ -52,6 +53,8 @@ protected:
 private:
 
 	void					UpdateRepairs		( repairBotArm_t& arm );
+	void					UpdateRepairPresentation( repairBotArm_t& arm );
+	void					ClearRepairEffects	( repairBotArm_t& arm, bool resetPeriodicTime );
 	void					StopRepairs			( repairBotArm_t& arm );
 	
 	// Leg states
@@ -150,6 +153,22 @@ void rvMonsterRepairBot::Think ( void ) {
 
 /*
 ================
+rvMonsterRepairBot::UpdatePresentationNonModelVisuals
+================
+*/
+void rvMonsterRepairBot::UpdatePresentationNonModelVisuals( void ) {
+	idAI::UpdatePresentationNonModelVisuals();
+
+	if ( gameLocal.isNewFrame ) {
+		return;
+	}
+
+	UpdateRepairPresentation( armLeft );
+	UpdateRepairPresentation( armRight );
+}
+
+/*
+================
 rvMonsterRepairBot::UpdateRepairs
 ================
 */
@@ -212,8 +231,72 @@ void rvMonsterRepairBot::UpdateRepairs ( repairBotArm_t& arm ) {
 
 		if( gameLocal.GetTime() > arm.periodicEndTime ) {// FIXME: Seems dumb to keep banging on this if the fx isn't defined.
 			gameLocal.PlayEffect( spawnArgs, "fx_repair_impact_periodic", tr.endpos, tr.c.normal.ToMat3() );
-			arm.periodicEndTime = gameLocal.GetTime() + SEC2MS( rvRandom::flrand(spawnArgs.GetVec2("impact_fx_delay_range", "1 1")) );
+		arm.periodicEndTime = gameLocal.GetTime() + SEC2MS( rvRandom::flrand(spawnArgs.GetVec2("impact_fx_delay_range", "1 1")) );
 		}
+	}
+}
+
+/*
+================
+rvMonsterRepairBot::UpdateRepairPresentation
+================
+*/
+void rvMonsterRepairBot::UpdateRepairPresentation( repairBotArm_t& arm ) {
+	if ( arm.joint == INVALID_JOINT ) {
+		return;
+	}
+
+	if ( gameLocal.time > repairEndTime || !arm.repairing ) {
+		ClearRepairEffects( arm, false );
+		return;
+	}
+
+	if ( !arm.effectRepair && !arm.effectImpact ) {
+		return;
+	}
+
+	trace_t tr;
+	idVec3 origin;
+	idMat3 axis;
+	idVec3 presentationOrigin;
+	idMat3 presentationAxis;
+	GetPresentationJointWorldTransform( arm.joint, Sys_Milliseconds(), origin, axis );
+	gameLocal.TracePoint( this, tr, origin, origin + axis[0] * repairEffectDist, MASK_SHOT_RENDERMODEL, this );
+
+	if ( tr.fraction >= 1.0f ) {
+		ClearRepairEffects( arm, false );
+		return;
+	}
+
+	if ( arm.effectRepair ) {
+		arm.effectRepair->SetEndOrigin( tr.endpos );
+	}
+
+	if ( arm.effectImpact ) {
+		GetPresentationTransformForView( presentationOrigin, presentationAxis );
+		const idVec3 localOrigin = ( tr.endpos - presentationOrigin ) * presentationAxis.Transpose();
+		const idMat3 localAxis = tr.c.normal.ToMat3();
+		arm.effectImpact->SetOrigin( localOrigin );
+		arm.effectImpact->SetAxis( localAxis );
+	}
+}
+
+/*
+================
+rvMonsterRepairBot::ClearRepairEffects
+================
+*/
+void rvMonsterRepairBot::ClearRepairEffects( repairBotArm_t& arm, bool resetPeriodicTime ) {
+	if ( arm.effectImpact ) {
+		arm.effectImpact->Stop();
+		arm.effectImpact = NULL;
+	}
+	if ( arm.effectRepair ) {
+		arm.effectRepair->Stop();
+		arm.effectRepair = NULL;
+	}
+	if ( resetPeriodicTime ) {
+		arm.periodicEndTime = -1;
 	}
 }
 
@@ -223,16 +306,7 @@ rvMonsterRepairBot::StopRepairs
 ================
 */
 void rvMonsterRepairBot::StopRepairs ( repairBotArm_t& arm ) {
-	if ( arm.effectImpact ) {
-		arm.effectImpact->Stop ( );
-		arm.effectImpact = NULL;
-	}
-	if ( arm.effectRepair ) {
-		arm.effectRepair->Stop ( );
-		arm.effectRepair = NULL;
-	}
-
-	arm.periodicEndTime = -1;
+	ClearRepairEffects( arm, true );
 }
 
 /*

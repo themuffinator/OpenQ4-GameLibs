@@ -567,7 +567,9 @@ public:
 	}
 	float					SysScriptFrameTime(void) const
 	{
-		return MS2SEC(time - previousTime);
+		return ( GetMHz() == common->GetUserCmdHz() )
+			? common->GetUserCmdSec()
+			: MS2SEC(time - previousTime);
 	}
 
 	void	Trace(trace_t& results, const idVec3& start, const idVec3& end, int contentMask, int passEntity);

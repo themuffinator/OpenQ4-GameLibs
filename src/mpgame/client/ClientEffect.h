@@ -20,6 +20,8 @@ public:
 	virtual void		DrawDebugInfo	( void ) const;
 	virtual void		FreeEntityDef	( void );
 	virtual void		UpdateBind		( void );
+	virtual void		UpdatePresentation( void );
+	virtual void		UpdatePresentationEffect( void );
 
 	bool				Play			( int startTime, bool loop = false, const idVec3& origin = vec3_origin );
 	void				Stop			( bool destroyParticles = false );
@@ -48,6 +50,7 @@ protected:
 
 	void				Init			( const idDecl *effect );
 	void				FreeEffectDef	( void );
+	virtual void		UpdateBindAtTime( int currentTime );
 
 	renderEffect_t		renderEffect;
 	int					effectDefHandle;
@@ -82,6 +85,8 @@ public:
 	~rvClientCrawlEffect			( void ) {}
 
 	virtual void		Think		( void );
+	virtual void		UpdatePresentation( void );
+	virtual void		UpdatePresentationEffect( void );
 
 	void				Save		( idSaveGame *savefile ) const;
 	void				Restore		( idRestoreGame *savefile );

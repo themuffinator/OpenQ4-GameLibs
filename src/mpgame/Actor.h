@@ -139,6 +139,7 @@ public:
 	virtual void			Show( void );
 	virtual int				GetDefaultSurfaceType( void ) const;
 	virtual void			ProjectOverlay( const idVec3 &origin, const idVec3 &dir, float size, const char *material );
+	virtual void			UpdatePresentationNonModelVisuals( void );
 
 	virtual bool			LoadAF( const char* keyname = NULL, bool purgeAF = false );
 	void					SetupBody( void );

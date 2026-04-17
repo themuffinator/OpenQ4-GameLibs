@@ -361,6 +361,40 @@ void rvViewWeapon::PresentWeapon( bool showViewModel ) {
 	UpdateSound();
 }
 
+void rvViewWeapon::UpdatePresentationWeapon( bool showViewModel ) {
+	if ( fl.networkStale || gameLocal.inCinematic || !weapon ) {
+		return;
+	}
+
+	renderEntity.allowSurfaceInViewID = weapon->GetOwner()->entityNumber + 1;
+	renderEntity.weaponDepthHackInViewID = weapon->GetOwner()->entityNumber + 1;
+
+	idVec3 presentationViewOrigin;
+	idMat3 presentationViewAxis;
+	weapon->GetOwner()->GetPresentationViewPos( presentationViewOrigin, presentationViewAxis );
+	weapon->UpdateViewModelPresentation( presentationViewOrigin, presentationViewAxis );
+	weapon->UpdatePresentationLights( true );
+	weapon->UpdatePresentation();
+
+	if ( !gameLocal.isNewFrame ) {
+		for ( rvClientEntity* cent = clientEntities.Next(); cent != NULL; cent = cent->bindNode.Next() ) {
+			if ( !cent->IsType( rvClientEffect::GetClassType() ) ) {
+				continue;
+			}
+
+			static_cast<rvClientEffect *>( cent )->UpdatePresentationEffect();
+		}
+	}
+
+	if ( showViewModel && !( weapon->wsfl.zoom && weapon->GetZoomGui() ) ) {
+		Present();
+	} else {
+		FreeModelDef();
+	}
+
+	UpdateSound();
+}
+
 /*
 ================
 rvViewWeapon::WriteToSnapshot
@@ -505,6 +539,14 @@ rvWeapon::rvWeapon ( void ) {
 	hitscanAttackDef = -1;
 	
 	forceGUIReload = false;
+}
+
+/*
+================
+rvWeapon::UpdatePresentation
+================
+*/
+void rvWeapon::UpdatePresentation( void ) {
 }
 
 /*
@@ -999,47 +1041,86 @@ void rvWeapon::InitDefs( void ) {
 	}
 }
 
+void rvWeapon::CalculateViewModelTransform( const idVec3 &playerOrigin, const idMat3 &playerAxis, idVec3 &origin, idMat3 &axis ) {
+	owner->CalculateViewWeaponPos( origin, axis, &playerOrigin, &playerAxis );
+
+	// hide offset is for dropping the gun when approaching a GUI or NPC
+	// This is simpler to manage than doing the weapon put-away animation
+	if ( gameLocal.time - hideStartTime < hideTime ) {
+		float frac = ( float )( gameLocal.time - hideStartTime ) / ( float )hideTime;
+		if ( hideStart < hideEnd ) {
+			frac = 1.0f - frac;
+			frac = 1.0f - frac * frac;
+		} else {
+			frac = frac * frac;
+		}
+		hideOffset = hideStart + ( hideEnd - hideStart ) * frac;
+	} else {
+		hideOffset = hideEnd;
+	}
+	origin += hideOffset * axis[ 2 ];
+
+	// kick up based on repeat firing
+	MuzzleRise( origin, axis );
+}
+
+void rvWeapon::UpdateViewModelPresentation( const idVec3 &playerOrigin, const idMat3 &playerAxis ) {
+	playerViewOrigin = playerOrigin;
+	playerViewAxis = playerAxis;
+
+	CalculateViewModelTransform( playerViewOrigin, playerViewAxis, viewModelOrigin, viewModelAxis );
+
+	if ( viewModel ) {
+		viewModel->GetPhysics()->SetOrigin( viewModelOrigin );
+		viewModel->GetPhysics()->SetAxis( viewModelAxis );
+		viewModel->UpdateVisuals();
+	} else {
+		common->Warning( "NULL viewmodel %s\n", __FUNCTION__ );
+	}
+}
+
+bool rvWeapon::GetPresentationViewJointTransform( const jointHandle_t jointHandle, idVec3 &origin, idMat3 &axis, const idVec3& offset ) {
+	if ( !viewModel || !viewAnimator || !owner ) {
+		return GetGlobalJointTransform( true, jointHandle, origin, axis, offset );
+	}
+
+	const idPlayer* localPlayer = gameLocal.GetLocalPlayer();
+	const bool usePresentationView =
+		localPlayer &&
+		( owner == localPlayer || ( localPlayer->spectating && localPlayer->spectator == owner->entityNumber ) );
+	if ( !usePresentationView ) {
+		return GetGlobalJointTransform( true, jointHandle, origin, axis, offset );
+	}
+
+	owner->UpdatePresentationViewState();
+
+	idVec3 presentationViewOrigin;
+	idMat3 presentationViewAxis;
+	owner->GetPresentationViewPos( presentationViewOrigin, presentationViewAxis );
+
+	idVec3 presentationViewModelOrigin;
+	idMat3 presentationViewModelAxis;
+	CalculateViewModelTransform( presentationViewOrigin, presentationViewAxis, presentationViewModelOrigin, presentationViewModelAxis );
+
+	if ( viewAnimator->GetJointTransform( jointHandle, gameLocal.time, origin, axis ) ) {
+		origin = offset * axis + origin;
+		origin = origin * ForeshortenAxis( presentationViewModelAxis ) + presentationViewModelOrigin;
+		axis = axis * presentationViewModelAxis;
+		return true;
+	}
+
+	origin = presentationViewModelOrigin + offset * presentationViewModelAxis;
+	axis = presentationViewModelAxis;
+	return false;
+}
+
 /*
 ================
 rvWeapon::Think
 ================
 */
 void rvWeapon::Think ( void ) {	
-	
-	// Cache the player origin and axis
-	playerViewOrigin = owner->firstPersonViewOrigin;
-	playerViewAxis   = owner->firstPersonViewAxis;
-
-	// calculate weapon position based on player movement bobbing
-	owner->CalculateViewWeaponPos( viewModelOrigin, viewModelAxis );
-
-	// hide offset is for dropping the gun when approaching a GUI or NPC
-	// This is simpler to manage than doing the weapon put-away animation
- 	if ( gameLocal.time - hideStartTime < hideTime ) {		
- 		float frac = ( float )( gameLocal.time - hideStartTime ) / ( float )hideTime;
- 		if ( hideStart < hideEnd ) {
- 			frac = 1.0f - frac;
- 			frac = 1.0f - frac * frac;
- 		} else {
- 			frac = frac * frac;
- 		}
-		hideOffset = hideStart + ( hideEnd - hideStart ) * frac;
-	} else {
-		hideOffset = hideEnd;
-	}
-	viewModelOrigin += hideOffset * viewModelAxis[ 2 ];
-
-	// kick up based on repeat firing
-	MuzzleRise( viewModelOrigin, viewModelAxis );
-
-	if ( viewModel ) {
-		// set the physics position and orientation
-		viewModel->GetPhysics()->SetOrigin( viewModelOrigin );
-		viewModel->GetPhysics()->SetAxis( viewModelAxis );
- 		viewModel->UpdateVisuals();
-	} else {
-		common->Warning( "NULL viewmodel %s\n", __FUNCTION__ );
-	}
+	UpdateViewModelPresentation( owner->firstPersonViewOrigin, owner->firstPersonViewAxis );
 	
 	// Update the zoom variable before updating the script
 	wsfl.zoom = owner->IsZoomed( );
@@ -1199,6 +1280,82 @@ void rvWeapon::UpdateLight ( int lightID ) {
 		lightHandles[lightID] = gameRenderWorld->AddLightDef ( &lights[lightID] );
 	} else {
 		gameRenderWorld->UpdateLightDef( lightHandles[lightID], &lights[lightID] );
+	}
+}
+
+/*
+================
+rvWeapon::UpdatePresentationLights
+================
+*/
+void rvWeapon::UpdatePresentationLights( bool updateViewLights ) {
+	if ( gameLocal.isNewFrame || !owner ) {
+		return;
+	}
+
+	if ( lightHandles[WPLIGHT_MUZZLEFLASH] != -1 || lightHandles[WPLIGHT_MUZZLEFLASH_WORLD] != -1 ) {
+		if ( gameLocal.time >= muzzleFlashEnd || !gameLocal.GetLocalPlayer() || gameLocal.GetLocalPlayer()->GetInstance() != owner->GetInstance() ) {
+			FreeLight( WPLIGHT_MUZZLEFLASH );
+			FreeLight( WPLIGHT_MUZZLEFLASH_WORLD );
+		} else {
+			renderLight_t& light = lights[WPLIGHT_MUZZLEFLASH];
+			renderLight_t& lightWorld = lights[WPLIGHT_MUZZLEFLASH_WORLD];
+
+			if ( updateViewLights && lightHandles[WPLIGHT_MUZZLEFLASH] != -1 ) {
+				light.origin = playerViewOrigin + ( playerViewAxis * muzzleFlashViewOffset );
+				light.axis = playerViewAxis;
+				UpdateLight( WPLIGHT_MUZZLEFLASH );
+			}
+
+			if ( lightHandles[WPLIGHT_MUZZLEFLASH_WORLD] != -1 ) {
+				GetGlobalJointTransform( false, flashJointWorld, lightWorld.origin, lightWorld.axis );
+				UpdateLight( WPLIGHT_MUZZLEFLASH_WORLD );
+			}
+		}
+	}
+
+	if ( lightHandles[WPLIGHT_FLASHLIGHT] != -1 || lightHandles[WPLIGHT_FLASHLIGHT_WORLD] != -1 ) {
+		if ( !owner->IsFlashlightOn() ) {
+			FreeLight( WPLIGHT_FLASHLIGHT );
+			FreeLight( WPLIGHT_FLASHLIGHT_WORLD );
+		} else {
+			renderLight_t& light = lights[WPLIGHT_FLASHLIGHT];
+			renderLight_t& lightWorld = lights[WPLIGHT_FLASHLIGHT_WORLD];
+
+			if ( updateViewLights && lightHandles[WPLIGHT_FLASHLIGHT] != -1 ) {
+				trace_t tr;
+
+				GetGlobalJointTransform( true, flashlightJointView, light.origin, light.axis, flashlightViewOffset );
+				gameLocal.TracePoint( owner, tr, light.origin - playerViewAxis[0] * 8.0f, light.origin, MASK_SHOT_BOUNDINGBOX, owner );
+				light.origin = tr.endpos - ( tr.fraction < 1.0f ? ( playerViewAxis[0] * 8 ) : vec3_origin );
+				UpdateLight( WPLIGHT_FLASHLIGHT );
+			}
+
+			if ( lightHandles[WPLIGHT_FLASHLIGHT_WORLD] != -1 ) {
+				if ( flashlightJointWorld != INVALID_JOINT ) {
+					GetGlobalJointTransform( false, flashlightJointWorld, lightWorld.origin, lightWorld.axis );
+				} else {
+					lightWorld.origin = playerViewOrigin + playerViewAxis[0] * 20.0f;
+					lightWorld.axis = playerViewAxis;
+				}
+				UpdateLight( WPLIGHT_FLASHLIGHT_WORLD );
+			}
+		}
+	}
+
+	if ( updateViewLights && lightHandles[WPLIGHT_GUI] != -1 ) {
+		renderLight_t& light = lights[WPLIGHT_GUI];
+		if ( light.lightRadius[0] && guiLightJointView != INVALID_JOINT && viewModel ) {
+			idUserInterface *gui = viewModel->GetRenderEntity()->gui[0];
+			if ( gui ) {
+				idVec4 color = gui->GetLightColor();
+				light.shaderParms[SHADERPARM_RED] = color[0] * color[3];
+				light.shaderParms[SHADERPARM_GREEN] = color[1] * color[3];
+				light.shaderParms[SHADERPARM_BLUE] = color[2] * color[3];
+				GetPresentationViewJointTransform( guiLightJointView, light.origin, light.axis, guiLightOffset );
+				UpdateLight( WPLIGHT_GUI );
+			}
+		}
 	}
 }
 
@@ -2769,7 +2926,7 @@ void rvWeapon::Hitscan( const idDict& dict, const idVec3& muzzleOrigin, const id
 		aiManager.ReactToPlayerAttack( owner, muzzleOrigin, muzzleAxis[0] );
 	}
 
-	GetGlobalJointTransform( true, flashJointView, fxOrigin, fxAxis, dict.GetVector( "fxOriginOffset" ) );
+	GetPresentationViewJointTransform( flashJointView, fxOrigin, fxAxis, dict.GetVector( "fxOriginOffset" ) );
 
 	if ( gameLocal.isServer ) {
 

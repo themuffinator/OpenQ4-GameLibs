@@ -10,6 +10,16 @@
 #include "../Game_local.h"
 #include "VehicleAnimated.h"
 
+namespace {
+ID_INLINE int GameLocal_PreviousFrameTime() {
+	if ( gameLocal.GetMHz() == common->GetUserCmdHz() ) {
+		const int previousFrame = gameLocal.GetFrameNum() - 1;
+		return ( previousFrame > 0 ) ? common->GetUserCmdTime( previousFrame ) : 0;
+	}
+	return gameLocal.GetTime() - gameLocal.GetMSec();
+}
+}
+
 CLASS_DECLARATION( rvVehicle, rvVehicleAnimated )
 END_CLASS
 
@@ -90,7 +100,7 @@ void rvVehicleAnimated::Think ( void ) {
 	}
 
 	viewAngles.Normalize360();
-	animator.GetDelta( gameLocal.time - gameLocal.GetMSec(), gameLocal.time, delta );
+	animator.GetDelta( GameLocal_PreviousFrameTime(), gameLocal.time, delta );
 	delta += additionalDelta;
 
 	idStr alignmentJoint;
@@ -226,7 +236,7 @@ void rvVehicleAnimated::RunPostPhysics ( void ) {
 		idVec3 delta;
 		idVec3 actualDelta = physicsObj.GetOrigin() - storedPosition;
 
-		animator.GetDelta( gameLocal.time - gameLocal.GetMSec(), gameLocal.time, delta );
+		animator.GetDelta( GameLocal_PreviousFrameTime(), gameLocal.time, delta );
 
 		if ( !autoCorrectionBegin && delta.LengthSqr() * 0.2f > actualDelta.LengthSqr() ) {
 			autoCorrectionBegin = gameLocal.time;

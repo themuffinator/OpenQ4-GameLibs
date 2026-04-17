@@ -93,6 +93,27 @@ void rvVehiclePart::UpdateOrigin ( void ) {
 
 /*
 ================
+rvVehiclePart::GetPresentationOrigin
+================
+*/
+bool rvVehiclePart::GetPresentationOrigin( idVec3& origin, idMat3& axis ) const {
+	if ( joint != INVALID_JOINT ) {
+		if ( !parent->GetPresentationJointWorldTransform( joint, Sys_Milliseconds(), origin, axis ) ) {
+			return false;
+		}
+	} else {
+		parent->GetPresentationTransformForView( origin, axis );
+		if ( fl.useCenterMass ) {
+			origin += ( parent->GetPhysics()->GetCenterMass() - parent->GetPhysics()->GetOrigin() ) * axis;
+		}
+	}
+
+	origin += localOffset * axis;
+	return true;
+}
+
+/*
+================
 rvVehiclePart::Save
 ================
 */
@@ -459,6 +480,28 @@ void rvVehicleLight::UpdateLightDef ( void ) {
 
 /*
 =====================
+rvVehicleLight::UpdatePresentationNonModelVisuals
+=====================
+*/
+void rvVehicleLight::UpdatePresentationNonModelVisuals( void ) {
+	if ( gameLocal.isNewFrame || lightHandle == -1 || !lightOn ) {
+		return;
+	}
+
+	idVec3 presentationOrigin;
+	idMat3 presentationAxis;
+	if ( !GetPresentationOrigin( presentationOrigin, presentationAxis ) ) {
+		return;
+	}
+
+	renderLight_t presentationRenderLight = renderLight;
+	presentationRenderLight.origin = presentationOrigin;
+	presentationRenderLight.axis = presentationAxis;
+	gameRenderWorld->UpdateLightDef( lightHandle, &presentationRenderLight );
+}
+
+/*
+=====================
 rvVehicleLight::Activate
 =====================
 */
@@ -756,6 +799,55 @@ void rvVehicleWeapon::StopTargetEffect ( void ) {
 
 /*
 =====================
+rvVehicleWeapon::GetTargetEffectPosition
+=====================
+*/
+bool rvVehicleWeapon::GetTargetEffectPosition( idVec3& effectOrigin, bool presentationSample ) const {
+	idEntity* lockedEnt = targetEnt.GetEntity();
+	if ( lockedEnt == NULL || lockedEnt->health <= 0 || !lockedEnt->IsType( idActor::GetClassType() ) ) {
+		return false;
+	}
+
+	if ( targetJoint != INVALID_JOINT && lockedEnt->IsType( idAnimatedEntity::GetClassType() ) ) {
+		idMat3 jointAxis;
+		if ( presentationSample ) {
+			if ( static_cast<idAnimatedEntity*>( lockedEnt )->GetPresentationJointWorldTransform( targetJoint, Sys_Milliseconds(), effectOrigin, jointAxis ) ) {
+				if ( !targetPos.Compare( vec3_origin ) ) {
+					effectOrigin += jointAxis[0] * targetPos[0];
+					effectOrigin += jointAxis[1] * targetPos[1];
+					effectOrigin += jointAxis[2] * targetPos[2];
+				}
+				return true;
+			}
+		} else {
+			static_cast<idAnimatedEntity*>( lockedEnt )->GetAnimator()->GetJointTransform( targetJoint, gameLocal.GetTime(), effectOrigin, jointAxis );
+			effectOrigin = lockedEnt->GetRenderEntity()->origin + ( effectOrigin * lockedEnt->GetRenderEntity()->axis );
+			if ( !targetPos.Compare( vec3_origin ) ) {
+				jointAxis *= lockedEnt->GetRenderEntity()->axis;
+				effectOrigin += jointAxis[0] * targetPos[0];
+				effectOrigin += jointAxis[1] * targetPos[1];
+				effectOrigin += jointAxis[2] * targetPos[2];
+			}
+			return true;
+		}
+	}
+
+	idVec3 originDelta = vec3_origin;
+	if ( presentationSample ) {
+		idVec3 presentationOrigin;
+		idMat3 presentationAxis;
+		lockedEnt->GetPresentationTransformForView( presentationOrigin, presentationAxis );
+		originDelta = presentationOrigin - lockedEnt->GetPhysics()->GetOrigin();
+	}
+
+	effectOrigin = static_cast<idActor*>( lockedEnt )->GetEyePosition() + originDelta;
+	effectOrigin += lockedEnt->GetPhysics()->GetAbsBounds().GetCenter() + originDelta;
+	effectOrigin *= 0.5f;
+	return true;
+}
+
+/*
+=====================
 rvVehicleWeapon::UpdateLock
 =====================
 */
@@ -840,23 +932,8 @@ void rvVehicleWeapon::UpdateLock ( void ) {
 		idPlayer *player = gameLocal.GetLocalPlayer();
 		if ( player && position->GetDriver() == player ) {
 			// Update the guide effect
-			if ( targetEnt && targetEnt.IsValid() && targetEnt->health > 0 && targetEnt->IsType( idActor::GetClassType() ) ) {
-				idVec3 eyePos;
-				if ( targetJoint != INVALID_JOINT ) {
-					idMat3 jointAxis;
-					targetEnt->GetAnimator()->GetJointTransform( targetJoint, gameLocal.GetTime(), eyePos, jointAxis );
-					eyePos = targetEnt->GetRenderEntity()->origin + (eyePos*targetEnt->GetRenderEntity()->axis);
-					if ( !targetPos.Compare( vec3_origin ) ) {
-						jointAxis = jointAxis * targetEnt->GetRenderEntity()->axis;
-						eyePos += jointAxis[0]*targetPos[0];
-						eyePos += jointAxis[1]*targetPos[1];
-						eyePos += jointAxis[2]*targetPos[2];
-					}
-				} else {
-					eyePos = static_cast<idActor *>(targetEnt.GetEntity())->GetEyePosition();
-					eyePos += targetEnt->GetPhysics()->GetAbsBounds().GetCenter ( );
-					eyePos *= 0.5f;
-				}
+			idVec3 eyePos;
+			if ( GetTargetEffectPosition( eyePos, false ) ) {
 				if ( targetEffect ) {			
 					targetEffect->SetOrigin ( eyePos );
 					targetEffect->SetAxis ( player->firstPersonViewAxis.Transpose() );
@@ -872,6 +949,30 @@ void rvVehicleWeapon::UpdateLock ( void ) {
 			}
 		}
 	}
+}
+
+/*
+=====================
+rvVehicleWeapon::UpdateTargetEffectPresentation
+=====================
+*/
+void rvVehicleWeapon::UpdateTargetEffectPresentation( void ) {
+	if ( !targetEffect ) {
+		return;
+	}
+
+	idPlayer* player = gameLocal.GetLocalPlayer();
+	if ( player == NULL || position->GetDriver() != player ) {
+		return;
+	}
+
+	idVec3 effectOrigin;
+	if ( !GetTargetEffectPosition( effectOrigin, true ) ) {
+		return;
+	}
+
+	targetEffect->SetOrigin( effectOrigin );
+	targetEffect->SetAxis( player->firstPersonViewAxis.Transpose() );
 }
 
 /*
@@ -964,6 +1065,45 @@ void rvVehicleWeapon::MuzzleFlashLight( const idVec3& origin, const idMat3& axis
 	} else {
 		muzzleFlashHandle = gameRenderWorld->AddLightDef( &muzzleFlash );
 	}
+}
+
+/*
+=====================
+rvVehicleWeapon::UpdatePresentationNonModelVisuals
+=====================
+*/
+void rvVehicleWeapon::UpdatePresentationNonModelVisuals( void ) {
+	if ( gameLocal.isNewFrame ) {
+		return;
+	}
+
+	UpdateTargetEffectPresentation();
+
+	if ( muzzleFlashHandle == -1 ) {
+		return;
+	}
+
+	const int presentationTime = Sys_Milliseconds();
+	if ( presentationTime >= muzzleFlashEnd ) {
+		gameRenderWorld->FreeLightDef( muzzleFlashHandle );
+		muzzleFlashHandle = -1;
+		return;
+	}
+
+	if ( jointIndex < 0 || jointIndex >= joints.Num() ) {
+		return;
+	}
+
+	idVec3 jointOrigin;
+	idMat3 jointAxis;
+	if ( !parent->GetPresentationJointWorldTransform( joints[ jointIndex ], presentationTime, jointOrigin, jointAxis ) ) {
+		return;
+	}
+
+	renderLight_t presentationMuzzleFlash = muzzleFlash;
+	presentationMuzzleFlash.origin = jointOrigin + muzzleFlashOffset * jointAxis;
+	presentationMuzzleFlash.axis = jointAxis;
+	gameRenderWorld->UpdateLightDef( muzzleFlashHandle, &presentationMuzzleFlash );
 }
 
 /*
@@ -2057,6 +2197,59 @@ void rvVehicleHoverpad::UpdateDustEffect ( const idVec3& origin, const idMat3& a
 			static_cast<rvVehicleSound*>(position->GetPart(soundPart))->Play ( );
 		}
 	}
+}
+
+/*
+================
+rvVehicleHoverpad::UpdatePresentationNonModelVisuals
+================
+*/
+void rvVehicleHoverpad::UpdatePresentationNonModelVisuals( void ) {
+	if ( gameLocal.isNewFrame || atRest || !effectDust ) {
+		return;
+	}
+
+	UpdateDustPresentation();
+}
+
+/*
+================
+rvVehicleHoverpad::UpdateDustPresentation
+================
+*/
+void rvVehicleHoverpad::UpdateDustPresentation( void ) {
+	idVec3 presentationOrigin;
+	idMat3 partAxis;
+	if ( !GetPresentationOrigin( presentationOrigin, partAxis ) ) {
+		return;
+	}
+
+	idVec3 vehicleOrigin;
+	idMat3 presentationAxis;
+	parent->GetPresentationTransformForView( vehicleOrigin, presentationAxis );
+
+	idMat3 axis;
+	axis[0] = -presentationAxis[2];
+	axis[1] = presentationAxis[0];
+	axis[2] = presentationAxis[1];
+
+	const idVec3 end = presentationOrigin + ( parent->GetPhysics()->GetGravityNormal() * height );
+
+	trace_t tr;
+	gameLocal.Translation( parent.GetEntity(), tr, presentationOrigin, end, clipModel, axis, MASK_SOLID|CONTENTS_VEHICLECLIP, parent );
+	if ( tr.fraction >= 1.0f && tr.endpos == end ) {
+		effectDust->Attenuate( 0.0f );
+		effectDust->SetOrigin( presentationOrigin );
+		effectDust->SetAxis( axis );
+		return;
+	}
+
+	tr.c.point = presentationOrigin + ( end - presentationOrigin ) * ( tr.fraction + 0.001f );
+	const float curlength = height - ( presentationOrigin - tr.c.point ).Length();
+
+	effectDust->Attenuate( curlength / height );
+	effectDust->SetOrigin( tr.c.point );
+	effectDust->SetAxis( tr.c.normal.ToMat3() );
 }
 
 /*

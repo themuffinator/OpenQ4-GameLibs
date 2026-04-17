@@ -273,6 +273,9 @@ public:
 // abahr: added virtual to UpdateModelTransform
 	virtual
 	void					UpdateModelTransform( void );
+	void					UpdatePresentationTransformToRenderWorld( void );
+	void					GetPresentationTransformForView( idVec3 &origin, idMat3 &axis ) const;
+	virtual void			UpdatePresentationNonModelVisuals( void );
 	virtual void			UpdateRenderEntityCallback();
 	virtual const idAnimator *	GetAnimator( void ) const { return NULL; }	// returns animator object used by this entity
 // RAVEN END
@@ -533,8 +536,15 @@ public:
 // RAVEN END
 
 protected:
+	void					UpdatePresentationTransformState( void );
+	void					GetPresentationTransform( idVec3 &origin, idMat3 &axis ) const;
 	renderEntity_t			renderEntity;						// used to present a model to the renderer
 	int						modelDefHandle;						// handle to static renderer model
+	int						presentationTransformTime;
+	idVec3					presentationPrevOrigin;
+	idMat3					presentationPrevAxis;
+	idVec3					presentationCurOrigin;
+	idMat3					presentationCurAxis;
 	refSound_t				refSound;							// used to present sound to the audio engine
 	idEntityPtr< idEntity >	forwardDamageEnt;					// damage applied to the invoking object will be forwarded to this entity
 	idEntityPtr< idEntity > bindMaster;							// entity bound to if unequal NULL
@@ -770,6 +780,7 @@ public:
 	virtual void			SetModel( const char *modelname );
 
 	bool					GetJointWorldTransform( jointHandle_t jointHandle, int currentTime, idVec3 &offset, idMat3 &axis );
+	bool					GetPresentationJointWorldTransform( jointHandle_t jointHandle, int currentTime, idVec3 &offset, idMat3 &axis );
 	bool					GetJointTransformForAnim( jointHandle_t jointHandle, int animNum, int currentTime, idVec3 &offset, idMat3 &axis ) const;
 
 	virtual int				GetDefaultSurfaceType( void ) const;

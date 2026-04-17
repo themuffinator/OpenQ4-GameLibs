@@ -9,6 +9,43 @@
 
 #include "../Game_local.h"
 
+namespace {
+ID_INLINE int ClientMoveable_GetPresentationTime( void ) {
+	if ( gameLocal.isNewFrame ) {
+		return gameLocal.GetTime();
+	}
+
+	return Sys_Milliseconds();
+}
+
+ID_INLINE float ClientMoveable_GetPresentationInterpolationFraction( void ) {
+	if ( gameLocal.isNewFrame || gameLocal.GetDemoState() == DEMO_PLAYING || gameLocal.IsTimeDemo() ) {
+		return 1.0f;
+	}
+
+	const float ticMsec = common->GetUserCmdMsecFloat();
+	if ( ticMsec <= 0.0f ) {
+		return 1.0f;
+	}
+
+	return idMath::ClampFloat( 0.0f, 1.0f,
+		static_cast<float>( ClientMoveable_GetPresentationTime() - gameLocal.GetTime() ) / ticMsec );
+}
+
+ID_INLINE idMat3 ClientMoveable_InterpolateAxis( const idMat3 &from, const idMat3 &to, float fraction ) {
+	if ( fraction <= 0.0f ) {
+		return from;
+	}
+	if ( fraction >= 1.0f ) {
+		return to;
+	}
+
+	idQuat blended;
+	blended.Slerp( from.ToQuat(), to.ToQuat(), fraction );
+	return blended.ToMat3();
+}
+}
+
 /*
 ===============================================================================
 
@@ -38,6 +75,11 @@ rvClientMoveable::rvClientMoveable ( void ) {
 	memset ( &renderEntity, 0, sizeof(renderEntity) );
 	entityDefHandle = -1;
 	scale.Init( 0, 0, 1.0f, 1.0f );
+	presentationTransformTime = -1;
+	presentationPrevOrigin = vec3_zero;
+	presentationPrevAxis = mat3_identity;
+	presentationCurOrigin = vec3_zero;
+	presentationCurAxis = mat3_identity;
 }
 
 /*
@@ -132,6 +174,7 @@ void rvClientMoveable::Spawn ( void ) {
 	mHasBounced = false;
 	
 	scale.Init( gameLocal.GetTime(), SEC2MS(spawnArgs.GetFloat("scale_reset_duration", "0.2")), Max(VECTOR_EPSILON, spawnArgs.GetFloat("scale", "1.0f")), 1.0f );
+	UpdatePresentationTransformState();
 }
 
 /*
@@ -142,6 +185,9 @@ rvClientMoveable::SetOrigin
 void rvClientMoveable::SetOrigin( const idVec3& origin ) {
 	rvClientEntity::SetOrigin( origin );
 	physicsObj.SetOrigin( origin );
+	if ( !bindMaster ) {
+		UpdatePresentationTransformState();
+	}
 }
 
 /*
@@ -152,6 +198,9 @@ rvClientMoveable::SetAxis
 void rvClientMoveable::SetAxis( const idMat3& axis ) {
 	rvClientEntity::SetAxis( axis );
 	physicsObj.SetAxis( axis );
+	if ( !bindMaster ) {
+		UpdatePresentationTransformState();
+	}
 }
 
 /*
@@ -198,6 +247,7 @@ void rvClientMoveable::Think ( void ) {
 		}
 	}
 
+	UpdatePresentationTransformState();
 	renderEntity.origin = worldOrigin;
 	renderEntity.axis = worldAxis * scale.GetCurrentValue( gameLocal.GetTime() );
 
@@ -207,6 +257,86 @@ void rvClientMoveable::Think ( void ) {
 	} else {
 		gameRenderWorld->UpdateEntityDef( entityDefHandle, &renderEntity );
 	}		
+}
+
+/*
+================
+rvClientMoveable::UpdatePresentationTransformState
+================
+*/
+void rvClientMoveable::UpdatePresentationTransformState( void ) {
+	if ( presentationTransformTime < 0 ) {
+		presentationTransformTime = gameLocal.time;
+		presentationPrevOrigin = worldOrigin;
+		presentationPrevAxis = worldAxis;
+		presentationCurOrigin = worldOrigin;
+		presentationCurAxis = worldAxis;
+		return;
+	}
+
+	if ( presentationTransformTime != gameLocal.time ) {
+		presentationPrevOrigin = presentationCurOrigin;
+		presentationPrevAxis = presentationCurAxis;
+		presentationTransformTime = gameLocal.time;
+	}
+
+	presentationCurOrigin = worldOrigin;
+	presentationCurAxis = worldAxis;
+}
+
+/*
+================
+rvClientMoveable::GetPresentationTransform
+================
+*/
+void rvClientMoveable::GetPresentationTransform( idVec3 &origin, idMat3 &axis ) const {
+	if ( presentationTransformTime < 0 ) {
+		origin = worldOrigin;
+		axis = worldAxis;
+		return;
+	}
+
+	const float fraction = ClientMoveable_GetPresentationInterpolationFraction();
+	origin.Lerp( presentationPrevOrigin, presentationCurOrigin, fraction );
+	axis = ClientMoveable_InterpolateAxis( presentationPrevAxis, presentationCurAxis, fraction );
+}
+
+/*
+================
+rvClientMoveable::UpdatePresentation
+================
+*/
+void rvClientMoveable::UpdatePresentation( void ) {
+	if ( gameLocal.isNewFrame || entityDefHandle < 0 ) {
+		return;
+	}
+
+	if ( bindMaster && ( bindMaster->IsHidden() || ( bindMaster->GetRenderEntity()->hModel && bindMaster->GetModelDefHandle() == -1 ) ) ) {
+		return;
+	}
+
+	const int presentationTime = ClientMoveable_GetPresentationTime();
+	const float presentationScale = scale.GetCurrentValue( presentationTime );
+	idVec3 presentationOrigin;
+	idMat3 presentationAxis;
+	GetPresentationTransform( presentationOrigin, presentationAxis );
+
+	renderEntity_t presentationEntity = renderEntity;
+	presentationEntity.origin = presentationOrigin;
+	presentationEntity.axis = presentationAxis * presentationScale;
+	gameRenderWorld->UpdateEntityDef( entityDefHandle, &presentationEntity );
+
+	idSoundEmitter *emitter = soundSystem->EmitterForIndex( SOUNDWORLD_GAME, refSound.referenceSoundHandle );
+	if ( emitter ) {
+		refSound.origin = presentationOrigin;
+		refSound.velocity = worldVelocity;
+		emitter->UpdateEmitter( refSound.origin, refSound.velocity, refSound.listenerId, &refSound.parms );
+	}
+
+	if ( trailEffect ) {
+		trailEffect->SetOrigin( presentationOrigin );
+		trailEffect->SetAxis( presentationAxis );
+	}
 }
 
 /*
@@ -290,6 +420,8 @@ void rvClientMoveable::Restore( idRestoreGame *savefile ) {
  	}
 
 	// TORESTORE: idInterpolate<float>	scale;
+	presentationTransformTime = -1;
+	UpdatePresentationTransformState();
 }
 
 /*

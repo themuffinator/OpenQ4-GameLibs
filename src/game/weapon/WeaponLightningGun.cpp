@@ -36,6 +36,7 @@ public:
 
 	virtual void			Spawn		( void );
 	virtual void			Think		( void );
+	virtual void			UpdatePresentation( void );
 
 	virtual void			ClientStale	( void );
 
@@ -49,7 +50,7 @@ public:
 
 protected:
 
-	void					UpdateTubes	( void );
+	void					UpdateTubes	( int currentTime );
 
 	// Tube effects
 	rvClientEntityPtr<rvClientEffect>	tubeEffects[LIGHTNINGGUN_NUM_TUBES];
@@ -259,7 +260,7 @@ void rvWeaponLightningGun::Think ( void ) {
 
 	rvWeapon::Think();
 
-	UpdateTubes();
+	UpdateTubes( gameLocal.time );
 
 	// If no longer firing or out of ammo then nothing to do in the think
 	if ( !wsfl.attack || !IsReady() || !AmmoAvailable() ) {
@@ -329,6 +330,29 @@ void rvWeaponLightningGun::Think ( void ) {
 	if ( gameLocal.time > nextCrawlTime ) {
 		nextCrawlTime = gameLocal.time + SEC2MS(spawnArgs.GetFloat ( "crawlDelay", ".3" ));
 	}
+}
+
+/*
+================
+rvWeaponLightningGun::UpdatePresentation
+================
+*/
+void rvWeaponLightningGun::UpdatePresentation( void ) {
+	if ( gameLocal.isNewFrame || !wsfl.attack || !IsReady() || !AmmoAvailable() ) {
+		return;
+	}
+
+	UpdateTubes( Sys_Milliseconds() );
+
+	idVec3 origin;
+	idMat3 axis;
+	if ( !cvarSystem->GetCVarBool( "ui_showGun" ) ) {
+		GetGlobalJointTransform( true, chestJointView, origin, axis );
+	} else {
+		GetGlobalJointTransform( true, barrelJointView, origin, axis );
+	}
+
+	UpdateEffects( origin );
 }
 
 /*
@@ -636,7 +660,7 @@ void rvWeaponLightningGun::PostSave( void ) {
 rvWeaponLightningGun::UpdateTubes
 ================
 */
-void rvWeaponLightningGun::UpdateTubes( void ) {
+void rvWeaponLightningGun::UpdateTubes( int currentTime ) {
 	idAnimator* animator;
 	animator = viewModel->GetAnimator ( );
 	assert ( animator );
@@ -673,15 +697,15 @@ void rvWeaponLightningGun::UpdateTubes( void ) {
 
 		if ( offset > tubeOffsets[i].GetEndValue ( ) ) {
 			float current;
-			current  = tubeOffsets[i].GetCurrentValue(gameLocal.time);
+			current  = tubeOffsets[i].GetCurrentValue( currentTime );
 			tubeOffsets[i].Init ( gameLocal.time, (1.0f - (current/tubeMaxOffset)) * (float)tubeTime, current, offset );
 		} else if ( offset < tubeOffsets[i].GetEndValue ( ) ) {
 			float current;
-			current  = tubeOffsets[i].GetCurrentValue(gameLocal.time);
+			current  = tubeOffsets[i].GetCurrentValue( currentTime );
 			tubeOffsets[i].Init ( gameLocal.time, (current/tubeMaxOffset) * (float)tubeTime, current, offset );
 		}			
 
-		animator->SetJointPos ( tubeJoints[i], JOINTMOD_LOCAL, idVec3(tubeOffsets[i].GetCurrentValue(gameLocal.time),0,0) );
+		animator->SetJointPos ( tubeJoints[i], JOINTMOD_LOCAL, idVec3( tubeOffsets[i].GetCurrentValue( currentTime ), 0, 0 ) );
 	}		
 }
 

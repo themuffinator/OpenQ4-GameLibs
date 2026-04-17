@@ -47,10 +47,10 @@ idPhysics::SnapTimeToPhysicsFrame
 ================
 */
 int idPhysics::SnapTimeToPhysicsFrame( int t ) {
-	int s;
-// RAVEN BEGIN
-// bdube: use GetMSec access rather than USERCMD_TIME
-	s = t + gameLocal.GetMSec() - 1;
+	if ( gameLocal.GetMHz() == common->GetUserCmdHz() ) {
+		return common->GetUserCmdTime( common->GetUserCmdTicsForMsecCeil( t ) );
+	}
+
+	int s = t + gameLocal.GetMSec() - 1;
 	return ( s - s % gameLocal.GetMSec() );
-// RAVEN END
 }

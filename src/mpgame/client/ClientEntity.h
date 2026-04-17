@@ -20,6 +20,7 @@ public:
 
 	virtual void		Present				( void );
 	virtual void		Think				( void );
+	virtual void		UpdatePresentation	( void );
 	virtual idPhysics*	GetPhysics			( void ) const;
 	virtual bool		Collide				( const trace_t &collision, const idVec3 &velocity );
 
@@ -60,6 +61,7 @@ protected:
 	void				RunPhysics			( void );
 
 	virtual void		UpdateBind			( void );
+	virtual void		UpdateBindAtTime	( int currentTime );
 	void				UpdateSound			( void );
 
 public:

@@ -33,6 +33,7 @@ public:
 	virtual void				RunPrePhysics		( void ) { }
 	virtual void				RunPhysics			( void ) { }
 	virtual void				RunPostPhysics		( void ) { }
+	virtual void				UpdatePresentationNonModelVisuals( void ) { }
 
 	bool						IsLeft				( void ) const;
 	bool						IsFront				( void ) const;
@@ -50,6 +51,7 @@ public:
 protected:
 
 	void						UpdateOrigin		( void );
+	bool						GetPresentationOrigin( idVec3& origin, idMat3& axis ) const;
 
 	typedef struct partFlags_s {
 		bool				active			: 1;	// Is part active
@@ -154,10 +156,12 @@ public:
 	virtual void	RunPrePhysics		( void );
 	virtual void	RunPhysics			( void );
 	virtual void	Activate			( bool active ); 
+	virtual void	UpdatePresentationNonModelVisuals( void );
 		
 protected:
 
 	void			UpdateDustEffect	( const idVec3& origin, const idMat3& axis, float attenuation, const rvDeclMatType* mtype );
+	void			UpdateDustPresentation( void );
 
 	float					height;
 	float					dampen;
@@ -238,6 +242,7 @@ public:
 
 	virtual void	RunPostPhysics		( void );
 	virtual void	Activate			( bool active );
+	virtual void	UpdatePresentationNonModelVisuals( void );
 
 	virtual void	Impulse				( int impulse );
 	
@@ -272,6 +277,7 @@ public:
 
 	virtual void			RunPostPhysics		( void );
 	virtual void			Activate			( bool activate );
+	virtual void			UpdatePresentationNonModelVisuals( void );
 	
 	int						GetCurrentAmmo		( void ) const;
 	float					GetCurrentCharge	( void ) const;
@@ -297,6 +303,8 @@ protected:
 	void					LaunchProjectiles	();
 
 	void					UpdateLock			( void );
+	bool					GetTargetEffectPosition( idVec3& effectOrigin, bool presentationSample ) const;
+	void					UpdateTargetEffectPresentation( void );
 	void					GetLockInfo			( const idVec3& eyeOrigin, const idMat3& eyeAxis );
 
 	void					EjectBrass			( void );

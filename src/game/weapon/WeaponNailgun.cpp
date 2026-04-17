@@ -35,6 +35,7 @@ public:
 
 	virtual void		Spawn					( void );
 	virtual void		Think					( void );
+	virtual void		UpdatePresentation		( void );
 	void				Save				( idSaveGame *savefile ) const;
 	void				Restore				( idRestoreGame *savefile );
 	void				PreSave					( void );
@@ -67,6 +68,8 @@ protected:
 private:
 
 	void				UpdateGuideStatus		( float range = 0.0f );
+	void				UpdateGuidePresentation	( void );
+	bool				GetGuidePresentationPosition( idVec3 &guidePos ) const;
 	void				CancelGuide				( void );	
 	bool				DrumSpin				( int speed, int blendFrames );
 
@@ -308,6 +311,76 @@ void rvWeaponNailgun::UpdateGuideStatus ( float range ) {
 
 /*
 ================
+rvWeaponNailgun::GetGuidePresentationPosition
+================
+*/
+bool rvWeaponNailgun::GetGuidePresentationPosition( idVec3 &guidePos ) const {
+	idEntity *targetEnt = guideEnt.GetEntity();
+	if ( targetEnt == NULL || !targetEnt->IsType( idActor::GetClassType() ) ) {
+		return false;
+	}
+
+	idVec3 presentationOrigin;
+	idMat3 presentationAxis;
+	targetEnt->GetPresentationTransformForView( presentationOrigin, presentationAxis );
+	const idVec3 originDelta = presentationOrigin - targetEnt->GetPhysics()->GetOrigin();
+
+	const idVec3 eyePos = static_cast<idActor *>( targetEnt )->GetEyePosition() + originDelta;
+	idVec3 lockPos;
+
+	if ( jointGuideEnt != INVALID_JOINT && targetEnt->IsType( idAnimatedEntity::GetClassType() ) ) {
+		idMat3 jointAxis;
+		if ( !static_cast<idAnimatedEntity *>( targetEnt )->GetPresentationJointWorldTransform( jointGuideEnt, Sys_Milliseconds(), lockPos, jointAxis ) ) {
+			lockPos = targetEnt->GetPhysics()->GetAbsBounds().GetCenter() + originDelta;
+		}
+	} else {
+		lockPos = targetEnt->GetPhysics()->GetAbsBounds().GetCenter() + originDelta;
+	}
+
+	guidePos = ( eyePos + lockPos ) * 0.5f;
+	return true;
+}
+
+/*
+================
+rvWeaponNailgun::UpdateGuidePresentation
+================
+*/
+void rvWeaponNailgun::UpdateGuidePresentation( void ) {
+	idVec3 guidePos;
+	if ( !GetGuidePresentationPosition( guidePos ) ) {
+		return;
+	}
+
+	if ( guideEffect ) {
+		guideEffect->SetOrigin( guidePos );
+		guideEffect->SetAxis( playerViewAxis.Transpose() );
+	}
+
+	if ( zoomGui && owner == gameLocal.GetLocalPlayer() ) {
+		const int presentationTime = Sys_Milliseconds();
+		float lockStatus = 0.0f;
+		if ( guideLocked ) {
+			lockStatus = 1.0f;
+		} else if ( guideTime > 0 ) {
+			lockStatus = Min( static_cast<float>( presentationTime - guideStartTime ) / static_cast<float>( guideTime ), 1.0f );
+		}
+
+		zoomGui->SetStateFloat( "lockStatus", lockStatus );
+		zoomGui->SetStateFloat( "playerYaw", playerViewAxis.ToAngles().yaw );
+
+		idVec3 diff = guidePos - playerViewOrigin;
+		if ( diff.LengthSqr() > 0.0f ) {
+			diff.NormalizeFast();
+			zoomGui->SetStateFloat( "lockYaw", idMath::AngleDelta( diff.ToAngles().yaw, playerViewAxis.ToAngles().yaw ) );
+		}
+		zoomGui->SetStateString( "lockRange", va( "%4.2f", ( guidePos - playerViewOrigin ).LengthFast() ) );
+		zoomGui->SetStateString( "lockTime", va( "%02d", Max( 0, static_cast<int>( MS2SEC( guideStartTime + guideTime - presentationTime ) ) + 1 ) ) );
+	}
+}
+
+/*
+================
 rvWeaponNailgun::Think
 ================
 */
@@ -403,6 +476,19 @@ void rvWeaponNailgun::Think ( void ) {
 	}
 	
 	UpdateGuideStatus ( (ent->GetPhysics()->GetOrigin() - playerViewOrigin).LengthFast() );
+}
+
+/*
+================
+rvWeaponNailgun::UpdatePresentation
+================
+*/
+void rvWeaponNailgun::UpdatePresentation( void ) {
+	if ( gameLocal.isNewFrame || !guideEnt || !guideEffect || !wsfl.zoom || IsReloading() || IsHolstered() ) {
+		return;
+	}
+
+	UpdateGuidePresentation();
 }
 
 /*

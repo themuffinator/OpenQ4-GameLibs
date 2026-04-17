@@ -19,6 +19,7 @@ public:
 
 	virtual void			Spawn				( void );
 	virtual void			Think				( void );
+	virtual void			UpdatePresentation	( void );
 
 	void					Save( idSaveGame *saveFile ) const;
 	void					Restore( idRestoreGame *saveFile );
@@ -203,6 +204,26 @@ void rvWeaponRocketLauncher::Think ( void ) {
 		guideEffect->SetOrigin ( tr.endpos );
 		guideEffect->SetAxis ( tr.c.normal.ToMat3() );
 	}
+}
+
+/*
+================
+rvWeaponRocketLauncher::UpdatePresentation
+================
+*/
+void rvWeaponRocketLauncher::UpdatePresentation( void ) {
+	if ( gameLocal.isNewFrame || !guideRange || !wsfl.zoom || !guideEffect ) {
+		return;
+	}
+
+	trace_t tr;
+	gameLocal.TracePoint( owner, tr,
+		playerViewOrigin,
+		playerViewOrigin + playerViewAxis[ 0 ] * guideRange,
+		MASK_SHOT_RENDERMODEL, owner );
+
+	guideEffect->SetOrigin( tr.endpos );
+	guideEffect->SetAxis( tr.c.normal.ToMat3() );
 }
 
 /*

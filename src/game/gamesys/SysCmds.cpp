@@ -1280,6 +1280,179 @@ void Cmd_Trigger_f( const idCmdArgs &args ) {
 	ent->TriggerGuis();
 }
 
+static idPlayer *Cmd_CinematicLocalPlayer( void ) {
+	idPlayer *player = gameLocal.GetLocalPlayer();
+	if ( !player || !gameLocal.CheatsOk() ) {
+		return NULL;
+	}
+
+	return player;
+}
+
+static void Cmd_CinematicRefreshRenderView( void ) {
+	idPlayer *player = gameLocal.GetLocalPlayer();
+	if ( player == NULL ) {
+		return;
+	}
+
+	player->CalculateRenderView();
+}
+
+static idCamera *Cmd_FindCameraEntity( const char *name ) {
+	idEntity *ent = gameLocal.FindEntity( name );
+	if ( ent == NULL || !ent->IsType( idCamera::GetClassType() ) ) {
+		return NULL;
+	}
+
+	return static_cast<idCamera *>( ent );
+}
+
+static void Cmd_PrintCinematicState( const char *reason ) {
+	const idCamera *activeCamera = gameLocal.GetCamera();
+	gameLocal.Printf(
+		"cinematic%s: active=%d skip=%d camera=%s\n",
+		reason != NULL ? reason : "",
+		gameLocal.InCinematic() ? 1 : 0,
+		gameLocal.skipCinematic ? 1 : 0,
+		activeCamera != NULL ? activeCamera->GetName() : "<none>" );
+}
+
+void Cmd_CinematicStatus_f( const idCmdArgs &args ) {
+	idPlayer *player = Cmd_CinematicLocalPlayer();
+	if ( player == NULL ) {
+		return;
+	}
+
+	Cmd_PrintCinematicState( "" );
+}
+
+void Cmd_ListCinematics_f( const idCmdArgs &args ) {
+	idPlayer *player = Cmd_CinematicLocalPlayer();
+	if ( player == NULL ) {
+		return;
+	}
+
+	idStr match;
+	if ( args.Argc() > 1 ) {
+		match = args.Args();
+		match.Replace( " ", "" );
+	} else {
+		match = "";
+	}
+
+	const idCamera *activeCamera = gameLocal.GetCamera();
+	int count = 0;
+
+	gameLocal.Printf( "%-4s  %-8s %-20s %s\n", "Num", "State", "Class", "Name" );
+	gameLocal.Printf( "--------------------------------------------------------------------\n" );
+	for ( int e = 0; e < MAX_GENTITIES; ++e ) {
+		idEntity *ent = gameLocal.entities[ e ];
+		if ( ent == NULL || !ent->IsType( idCamera::GetClassType() ) ) {
+			continue;
+		}
+
+		if ( !ent->name.Filter( match ) ) {
+			continue;
+		}
+
+		gameLocal.Printf(
+			"%4i: %-8s %-20s %s\n",
+			e,
+			( ent == activeCamera ) ? "active" : "idle",
+			ent->GetClassname(),
+			ent->name.c_str() );
+		count++;
+	}
+
+	Cmd_PrintCinematicState( " status" );
+	gameLocal.Printf( "...%d cinematic entities\n", count );
+}
+
+void Cmd_StartCinematic_f( const idCmdArgs &args ) {
+	idPlayer *player = Cmd_CinematicLocalPlayer();
+	if ( player == NULL ) {
+		return;
+	}
+
+	if ( args.Argc() != 2 ) {
+		gameLocal.Printf( "usage: startCinematic <name of camera entity>\n" );
+		return;
+	}
+
+	idCamera *camera = Cmd_FindCameraEntity( args.Argv( 1 ) );
+	if ( camera == NULL ) {
+		gameLocal.Printf( "camera entity not found\n" );
+		return;
+	}
+
+	idCamera *activeCamera = gameLocal.GetCamera();
+	if ( activeCamera != NULL && activeCamera != camera ) {
+		gameLocal.Printf( "startCinematic: stopping active camera '%s'\n", activeCamera->GetName() );
+		activeCamera->Stop();
+	}
+
+	if ( camera->IsType( idCameraAnim::GetClassType() ) ) {
+		static_cast<idEntity *>( camera )->ProcessEvent( &EV_Camera_Start );
+	} else {
+		gameLocal.SetCamera( camera );
+	}
+
+	Cmd_CinematicRefreshRenderView();
+	gameLocal.Printf( "startCinematic: requested '%s'\n", camera->GetName() );
+	Cmd_PrintCinematicState( " start" );
+}
+
+void Cmd_StopCinematic_f( const idCmdArgs &args ) {
+	idPlayer *player = Cmd_CinematicLocalPlayer();
+	if ( player == NULL ) {
+		return;
+	}
+
+	idCamera *camera = NULL;
+	if ( args.Argc() == 1 ) {
+		camera = gameLocal.GetCamera();
+		if ( camera == NULL ) {
+			gameLocal.Printf( "stopCinematic: no active camera\n" );
+			return;
+		}
+	} else if ( args.Argc() == 2 ) {
+		camera = Cmd_FindCameraEntity( args.Argv( 1 ) );
+		if ( camera == NULL ) {
+			gameLocal.Printf( "camera entity not found\n" );
+			return;
+		}
+	} else {
+		gameLocal.Printf( "usage: stopCinematic [name of camera entity]\n" );
+		return;
+	}
+
+	camera->Stop();
+	Cmd_CinematicRefreshRenderView();
+	gameLocal.Printf( "stopCinematic: requested '%s'\n", camera->GetName() );
+	Cmd_PrintCinematicState( " stop" );
+}
+
+void Cmd_SkipCinematic_f( const idCmdArgs &args ) {
+	idPlayer *player = Cmd_CinematicLocalPlayer();
+	if ( player == NULL ) {
+		return;
+	}
+
+	if ( args.Argc() != 1 ) {
+		gameLocal.Printf( "usage: skipCinematic\n" );
+		return;
+	}
+
+	if ( !gameLocal.InCinematic() ) {
+		gameLocal.Printf( "skipCinematic: no active cinematic\n" );
+		return;
+	}
+
+	const bool queued = player->SkipCinematic();
+	gameLocal.Printf( "skipCinematic: requested=%d\n", queued ? 1 : 0 );
+	Cmd_PrintCinematicState( " skip" );
+}
+
 /*
 ===================
 Cmd_Spawn_f
@@ -3282,6 +3455,11 @@ void idGameLocal::InitConsoleCommands( void ) {
 	cmdSystem->AddCommand( "gotolevelshot",			Cmd_GotoLevelshot_f,		CMD_FL_GAME|CMD_FL_CHEAT,	"moves the view to the levelshot position" );
 	cmdSystem->AddCommand( "teleport",				Cmd_Teleport_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"teleports the player to an entity location", idGameLocal::ArgCompletion_EntityName );
 	cmdSystem->AddCommand( "trigger",				Cmd_Trigger_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"triggers an entity", idGameLocal::ArgCompletion_EntityName );
+	cmdSystem->AddCommand( "cinematicStatus",		Cmd_CinematicStatus_f,		CMD_FL_GAME|CMD_FL_CHEAT,	"prints the current cinematic state" );
+	cmdSystem->AddCommand( "listCinematics",		Cmd_ListCinematics_f,		CMD_FL_GAME|CMD_FL_CHEAT,	"lists cinematic camera entities" );
+	cmdSystem->AddCommand( "startCinematic",		Cmd_StartCinematic_f,		CMD_FL_GAME|CMD_FL_CHEAT,	"starts a cinematic camera directly", idGameLocal::ArgCompletion_EntityName );
+	cmdSystem->AddCommand( "stopCinematic",			Cmd_StopCinematic_f,		CMD_FL_GAME|CMD_FL_CHEAT,	"stops the active cinematic camera or the named camera", idGameLocal::ArgCompletion_EntityName );
+	cmdSystem->AddCommand( "skipCinematic",			Cmd_SkipCinematic_f,		CMD_FL_GAME|CMD_FL_CHEAT,	"requests a cinematic skip through the normal player/game path" );
 	cmdSystem->AddCommand( "spawn",					Cmd_Spawn_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"spawns a game entity", idCmdSystem::ArgCompletion_Decl<DECL_ENTITYDEF> );
 	cmdSystem->AddCommand( "damage",				Cmd_Damage_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"apply damage to an entity", idGameLocal::ArgCompletion_EntityName );
 	cmdSystem->AddCommand( "remove",				Cmd_Remove_f,				CMD_FL_GAME|CMD_FL_CHEAT,	"removes an entity", idGameLocal::ArgCompletion_EntityName );

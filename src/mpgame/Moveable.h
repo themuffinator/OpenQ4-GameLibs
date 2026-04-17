@@ -138,6 +138,7 @@ public:
 	virtual void			Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, 
 								const char *damageDefName, const float damageScale, const int location );
 	virtual void			Killed( idEntity *inflictor, idEntity *attacker, int damage, const idVec3 &dir, int location );
+	virtual void			UpdatePresentationNonModelVisuals( void );
 
 	virtual void			WriteToSnapshot( idBitMsgDelta &msg ) const;
 	virtual void			ReadFromSnapshot( const idBitMsgDelta &msg );

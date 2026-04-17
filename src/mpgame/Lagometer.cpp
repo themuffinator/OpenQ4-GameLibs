@@ -8,6 +8,13 @@
 #define LAGO_WIDTH	64
 #define LAGO_HEIGHT	44
 
+static ID_INLINE float Lagometer_GetResolutionMsec( void ) {
+	// Preserve the legacy default as "one exact tic" instead of a literal 16 ms bucket.
+	if ( net_clientLagOMeterResolution.GetInteger() == 16 ) {
+		return common->GetUserCmdMsecFloat();
+	}
+	return static_cast<float>( Max( 1, net_clientLagOMeterResolution.GetInteger() ) );
+}
 
 idLagometer::idLagometer()
 {
@@ -52,8 +59,9 @@ void idLagometer::Update(int ahead, int dupe)
 {
 	frameIndex = (frameIndex + 1) % LAGOMETER_HISTORY;
 
+	const float resolutionMsec = Lagometer_GetResolutionMsec();
 	aheadOfServer[frameIndex] = 2 * idMath::ClampInt(-10, 5, 
-									floorf( (float)ahead / net_clientLagOMeterResolution.GetInteger() ));
+									floorf( static_cast<float>( ahead ) / resolutionMsec ));
 
 	dupeUserCmds[frameIndex] = 2 * Min( 6, dupe );
 } 

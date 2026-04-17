@@ -17,6 +17,7 @@ public:
 	
 	virtual void			Spawn			( void );
 	virtual void			Think			( void );
+	virtual void			UpdatePresentation( void );
 	virtual idPhysics*		GetPhysics		( void ) const;	
 	virtual bool			Collide			( const trace_t &collision, const idVec3 &velocity );
 	
@@ -48,8 +49,15 @@ protected:
 	bool					mHasBounced;
 
 	idInterpolate<float>	scale;
+	int						presentationTransformTime;
+	idVec3					presentationPrevOrigin;
+	idMat3					presentationPrevAxis;
+	idVec3					presentationCurOrigin;
+	idMat3					presentationCurAxis;
 	
 private:
+	void					UpdatePresentationTransformState( void );
+	void					GetPresentationTransform( idVec3 &origin, idMat3 &axis ) const;
 	
 	void					Event_FadeOut			( int duration );
 	void					Event_ClearDepthHack	( void );

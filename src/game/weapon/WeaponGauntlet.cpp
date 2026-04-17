@@ -14,6 +14,7 @@ public:
 
 	virtual void		Spawn				( void );
 	virtual void		CleanupWeapon		( void );
+	virtual void		UpdatePresentation	( void );
 	void				Save				( idSaveGame *savefile ) const;
 	void				Restore				( idRestoreGame *savefile );
 	void				PreSave				( void );
@@ -39,6 +40,8 @@ protected:
 private:
 
 	void				PlayLoopSound		( int sndType );
+	void				ClearImpactEffect	( void );
+	void				UpdateImpactEffect	( const trace_t& tr, bool allowSpawn );
 	int					loopSound;
 	enum {
 		LOOP_NONE,
@@ -162,6 +165,34 @@ rvWeaponGauntlet::PostSave
 void rvWeaponGauntlet::PostSave( void ) {
 }
 
+void rvWeaponGauntlet::ClearImpactEffect( void ) {
+	if ( impactEffect ) {
+		impactEffect->Stop( );
+		impactEffect = NULL;
+	}
+	impactMaterial = -1;
+}
+
+void rvWeaponGauntlet::UpdateImpactEffect( const trace_t& tr, bool allowSpawn ) {
+	idVec3 impactOrigin = tr.endpos;
+	if ( tr.fraction < 1.0f ) {
+		impactOrigin = tr.c.point - ( tr.c.normal * tr.c.point - tr.c.dist ) * tr.c.normal;
+		impactOrigin += tr.c.normal * 0.5f;
+	}
+	const idMat3 impactAxis = tr.c.normal.ToMat3();
+
+	if ( !impactEffect ) {
+		if ( !allowSpawn ) {
+			return;
+		}
+		impactMaterial = tr.c.materialType ? tr.c.materialType->Index() : -1;
+		impactEffect = gameLocal.PlayEffect( gameLocal.GetEffect( spawnArgs, "fx_impact", tr.c.materialType ), impactOrigin, impactAxis, true );
+	} else {
+		impactEffect->SetOrigin( impactOrigin );
+		impactEffect->SetAxis( impactAxis );
+	}
+}
+
 void rvWeaponGauntlet::PlayLoopSound( int sndType ) {
 	if ( loopSound == sndType ) {
 		return;
@@ -191,12 +222,7 @@ rvWeaponGauntlet::CleanupWeapon
 ================
 */
 void rvWeaponGauntlet::CleanupWeapon( void ) {
-
-	if ( impactEffect ) {
-		impactEffect->Stop( );
-		impactEffect = NULL;
-	}
-	impactMaterial = -1;
+	ClearImpactEffect();
 	PlayLoopSound( LOOP_NONE );
 }
 
@@ -220,11 +246,7 @@ void rvWeaponGauntlet::Attack ( void ) {
 	owner->WeaponFireFeedback( &weaponDef->dict );
 
 	if ( tr.fraction >= 1.0f ) {
-		if ( impactEffect ) {
-			impactEffect->Stop ( );
-			impactEffect = NULL;
-		}
-		impactMaterial = -1;
+		ClearImpactEffect();
 		PlayLoopSound( LOOP_NONE );
  		return;
 	}
@@ -235,11 +257,7 @@ void rvWeaponGauntlet::Attack ( void ) {
 	// If the impact material changed then stop the impact effect 
 	if ( (tr.c.materialType && tr.c.materialType->Index ( ) != impactMaterial) ||
 		 (!tr.c.materialType && impactMaterial != -1) ) {
-		if ( impactEffect ) {
-			impactEffect->Stop ( );
-			impactEffect = NULL;
-		}
-		impactMaterial = -1;
+		ClearImpactEffect();
 	}
 	
 	// In singleplayer-- the gauntlet never effects marine AI
@@ -271,20 +289,7 @@ void rvWeaponGauntlet::Attack ( void ) {
 
 	}
 	
-	idVec3 impactOrigin = tr.endpos;
-	if ( tr.fraction < 1.0f ) {
-		impactOrigin = tr.c.point - ( tr.c.normal * tr.c.point - tr.c.dist ) * tr.c.normal;
-		impactOrigin += tr.c.normal * 0.5f;
-	}
-	const idMat3 impactAxis = tr.c.normal.ToMat3();
-
-	if ( !impactEffect ) {
-		impactMaterial = tr.c.materialType ? tr.c.materialType->Index() : -1;
-		impactEffect = gameLocal.PlayEffect ( gameLocal.GetEffect ( spawnArgs, "fx_impact", tr.c.materialType ), impactOrigin, impactAxis, true );
-	} else {
-		impactEffect->SetOrigin ( impactOrigin );
-		impactEffect->SetAxis ( impactAxis );
-	}
+	UpdateImpactEffect( tr, true );
 	
 	// Do damage?
 	if ( gameLocal.time > nextAttackTime ) {					
@@ -307,6 +312,64 @@ void rvWeaponGauntlet::Attack ( void ) {
 		}
 		nextAttackTime = gameLocal.time + fireRate;
 	}
+}
+
+/*
+================
+rvWeaponGauntlet::UpdatePresentation
+================
+*/
+void rvWeaponGauntlet::UpdatePresentation( void ) {
+	trace_t		tr;
+	idEntity*	ent;
+
+	if ( gameLocal.isNewFrame || !wsfl.attack || !impactEffect ) {
+		return;
+	}
+
+	gameLocal.TracePoint(	owner, tr,
+							playerViewOrigin,
+							playerViewOrigin + playerViewAxis[0] * range,
+							MASK_SHOT_RENDERMODEL, owner );
+
+	if ( tr.fraction >= 1.0f ) {
+		ClearImpactEffect();
+		return;
+	}
+
+	ent = gameLocal.entities[tr.c.entityNum];
+
+	if ( (tr.c.materialType && tr.c.materialType->Index ( ) != impactMaterial) ||
+		 (!tr.c.materialType && impactMaterial != -1) ) {
+		ClearImpactEffect();
+		return;
+	}
+
+	if( !gameLocal.isMultiplayer ) {
+		idActor* actor_ent = 0;
+
+		if (ent->IsType( idActor::GetClassType()) )	{
+			actor_ent = static_cast<idActor*>(ent);
+		} else if (ent->IsType ( idAFAttachment::GetClassType()) )	{
+			actor_ent = static_cast<idActor*>(ent->GetBindMaster());
+		}
+
+		if ( actor_ent && actor_ent->team == gameLocal.GetLocalPlayer()->team )	{
+			return;
+		}
+	}
+
+	if( gameLocal.isMultiplayer )	{
+		idPlayer * player;
+		if ( ent->IsType( idPlayer::GetClassType() )) {
+			player = static_cast< idPlayer* >(ent);
+			if (player->health <= 0)	{
+				return;
+			}
+		}
+	}
+
+	UpdateImpactEffect( tr, false );
 }
 
 /*
@@ -345,11 +408,7 @@ void rvWeaponGauntlet::StopBlade ( void ) {
 	StopSound ( SND_CHANNEL_WEAPON, false );
 //	StartSound ( "snd_blade_slow", SND_CHANNEL_ITEM, 0, false, NULL );
 	
-	if ( impactEffect ) {
-		impactEffect->Stop ( );
-		impactEffect = NULL;
-	}
-	impactMaterial = -1;
+	ClearImpactEffect();
 }
 
 /*

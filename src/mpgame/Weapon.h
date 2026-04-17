@@ -64,6 +64,7 @@ public:
 
 	// Visual presentation
 	void					PresentWeapon				( bool showViewModel );
+	void					UpdatePresentationWeapon	( bool showViewModel );
 
 	// Networking
 	virtual void			WriteToSnapshot				( idBitMsgDelta &msg ) const;
@@ -139,6 +140,7 @@ public:
 	virtual bool		ClientReceiveEvent			( int event, int time, const idBitMsg &msg );
 	virtual void		ClientStale					( void );
 	virtual void		ClientUnstale				( void ) { }
+	virtual void		UpdatePresentation			( void );
 	virtual void		Attack						( bool altFire, int num_attacks, float spread, float fuseOffset, float power );
 	virtual void		GetDebugInfo				( debugInfoProc_t proc, void* userData );
 	virtual void		SpectatorCycle				( void ) { }
@@ -253,9 +255,12 @@ protected:
 	void				DisableViewEffectWeaponDepthHack	( rvClientEffect* effect );
 
 	void				FindViewModelPositionStyle	( idVec3& viewOffset, idAngles& viewAngles ) const;
+	void				CalculateViewModelTransform	( const idVec3 &playerOrigin, const idMat3 &playerAxis, idVec3 &origin, idMat3 &axis );
+	bool				GetPresentationViewJointTransform( const jointHandle_t jointHandle, idVec3 &origin, idMat3 &axis, const idVec3& offset = vec3_origin );
 
 public:
 
+	void				UpdateViewModelPresentation	( const idVec3 &playerOrigin, const idMat3 &playerAxis );
 	void				InitLights					( void );
 	void				InitWorldModel				( void );
 	void				InitViewModel				( void );
@@ -263,6 +268,7 @@ public:
 
 	void				FreeLight					( int lightID );
 	void				UpdateLight					( int lightID );
+	void				UpdatePresentationLights		( bool updateViewLights );
 
 	void				UpdateMuzzleFlash			( void );
 	void				UpdateFlashlight			( void );	

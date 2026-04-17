@@ -567,6 +567,25 @@ void rvVehiclePosition::RunPostPhysics ( void ) {
 
 /*
 ================
+rvVehiclePosition::UpdatePresentationNonModelVisuals
+================
+*/
+void rvVehiclePosition::UpdatePresentationNonModelVisuals( void ) {
+	int i;
+
+	for ( i = 0; i < mParts.Num(); i++ ) {
+		assert( mParts[i] );
+		mParts[i]->UpdatePresentationNonModelVisuals();
+	}
+
+	for ( i = 0; i < mWeapons.Num(); i++ ) {
+		assert( mWeapons[i] );
+		mWeapons[i]->UpdatePresentationNonModelVisuals();
+	}
+}
+
+/*
+================
 rvVehiclePosition::GetEyePosition
 ================
 */

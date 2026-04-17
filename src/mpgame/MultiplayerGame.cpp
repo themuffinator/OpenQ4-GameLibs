@@ -7,6 +7,8 @@
 #pragma hdrstop
 
 #include "Game_local.h"
+#include "Projectile.h"
+#include "Weapon.h"
 
 idCVar g_spectatorChat( "g_spectatorChat", "0", CVAR_GAME | CVAR_ARCHIVE | CVAR_BOOL, "let spectators talk to everyone during game" );
 
@@ -5355,6 +5357,84 @@ void idMultiplayerGame::SetShaderParms( renderView_t *view ) {
 	}	
 }
 
+static void MultiplayerGame_UpdateScenePlayerPresentation( const idPlayer *viewPlayer ) {
+	if ( viewPlayer == NULL || gameLocal.isNewFrame ) {
+		return;
+	}
+
+	for ( int i = 0; i < gameLocal.numClients; ++i ) {
+		idEntity *ent = gameLocal.entities[ i ];
+		if ( ent == NULL || !ent->IsType( idPlayer::GetClassType() ) ) {
+			continue;
+		}
+
+		idPlayer *scenePlayer = static_cast<idPlayer *>( ent );
+		if ( scenePlayer->GetInstance() != viewPlayer->GetInstance() ) {
+			continue;
+		}
+
+		scenePlayer->UpdatePresentationEntities();
+	}
+}
+
+static void MultiplayerGame_UpdateSceneProjectilePresentation( const idPlayer *viewPlayer ) {
+	if ( viewPlayer == NULL || gameLocal.isNewFrame ) {
+		return;
+	}
+
+	for ( idEntity *ent = gameLocal.spawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
+		if ( !ent->IsType( idProjectile::GetClassType() ) ) {
+			continue;
+		}
+		if ( ent->GetInstance() != viewPlayer->GetInstance() ) {
+			continue;
+		}
+
+		static_cast<idProjectile *>( ent )->UpdatePresentationProjectile();
+	}
+}
+
+static void MultiplayerGame_UpdateSceneActiveEntityPresentation( const idPlayer *viewPlayer ) {
+	if ( viewPlayer == NULL || gameLocal.isNewFrame ) {
+		return;
+	}
+
+	for ( idEntity *ent = gameLocal.activeEntities.Next(); ent != NULL; ent = ent->activeNode.Next() ) {
+		if ( ent->entityNumber >= 0 && ent->entityNumber < MAX_CLIENTS ) {
+			continue;
+		}
+		if ( ent->GetInstance() != viewPlayer->GetInstance() ) {
+			continue;
+		}
+		if ( ent->IsType( idProjectile::GetClassType() ) || ent->IsType( rvViewWeapon::GetClassType() ) ) {
+			continue;
+		}
+
+		idEntity *bindMaster = ent->GetBindMaster();
+		if ( bindMaster != NULL && bindMaster->IsType( idPlayer::GetClassType() ) ) {
+			continue;
+		}
+
+		ent->UpdatePresentationTransformToRenderWorld();
+		ent->UpdatePresentationNonModelVisuals();
+	}
+}
+
+static void MultiplayerGame_UpdateSceneClientEntityPresentation( const idPlayer *viewPlayer ) {
+	if ( viewPlayer == NULL || gameLocal.isNewFrame ) {
+		return;
+	}
+
+	for ( rvClientEntity *ent = gameLocal.clientSpawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
+		idEntity *bindMaster = ent->GetBindMaster().GetEntity();
+		if ( bindMaster != NULL && bindMaster->GetInstance() != viewPlayer->GetInstance() ) {
+			continue;
+		}
+
+		ent->UpdatePresentation();
+	}
+}
+
 /*
 ================
 idMultiplayerGame::Draw
@@ -5382,6 +5462,16 @@ bool idMultiplayerGame::Draw( int clientNum ) {
 			return false;
 		}
 	}
+
+	viewPlayer->CalculateRenderView();
+	MultiplayerGame_UpdateScenePlayerPresentation( viewPlayer );
+	MultiplayerGame_UpdateSceneProjectilePresentation( viewPlayer );
+	MultiplayerGame_UpdateSceneActiveEntityPresentation( viewPlayer );
+	UpdatePresentationSpecialLights( viewPlayer );
+	if ( viewPlayer->weaponViewModel.GetEntity() ) {
+		viewPlayer->weaponViewModel->UpdatePresentationWeapon( viewPlayer->CanShowWeaponViewmodel() );
+	}
+	MultiplayerGame_UpdateSceneClientEntityPresentation( viewPlayer );
 
 	if ( !viewPlayer->GetRenderView() ) {
 		return false;
@@ -6245,6 +6335,76 @@ void idMultiplayerGame::UpdateLight ( int lightID, idPlayer *player ) {
 		lightHandles[ lightID ] = gameRenderWorld->AddLightDef ( &lights[ lightID ] );
 	} else {
 		gameRenderWorld->UpdateLightDef( lightHandles[ lightID ], &lights[ lightID ] );
+	}
+}
+
+void idMultiplayerGame::UpdatePresentationSpecialLights( const idPlayer *viewPlayer ) {
+	if ( gameLocal.isNewFrame || viewPlayer == NULL || gameRenderWorld == NULL ) {
+		return;
+	}
+
+	const idPlayer *lightCarriers[ MPLIGHT_MAX ];
+	memset( lightCarriers, 0, sizeof( lightCarriers ) );
+
+	for ( int i = 0; i < gameLocal.numClients; ++i ) {
+		idEntity *ent = gameLocal.entities[ i ];
+		if ( !ent || !ent->IsType( idPlayer::GetClassType() ) ) {
+			continue;
+		}
+
+		const idPlayer *player = static_cast<const idPlayer *>( ent );
+		if ( player->GetInstance() != viewPlayer->GetInstance() ) {
+			continue;
+		}
+
+		for ( int lightID = 0; lightID < MPLIGHT_MAX; ++lightID ) {
+			if ( lightCarriers[ lightID ] != NULL ) {
+				continue;
+			}
+
+			bool ownsLight = false;
+			switch ( lightID ) {
+				case MPLIGHT_CTF_MARINE:
+					ownsLight = player->PowerUpActive( POWERUP_CTF_MARINEFLAG );
+					break;
+
+				case MPLIGHT_CTF_STROGG:
+					ownsLight = player->PowerUpActive( POWERUP_CTF_STROGGFLAG );
+					break;
+
+				case MPLIGHT_QUAD:
+					ownsLight = player->PowerUpActive( POWERUP_QUADDAMAGE ) || player->PowerUpActive( POWERUP_TEAM_DAMAGE_MOD );
+					break;
+
+				case MPLIGHT_HASTE:
+					ownsLight = player->PowerUpActive( POWERUP_HASTE );
+					break;
+
+				case MPLIGHT_REGEN:
+					ownsLight = player->PowerUpActive( POWERUP_REGENERATION );
+					break;
+			}
+
+			if ( !ownsLight ) {
+				continue;
+			}
+
+			lightCarriers[ lightID ] = player;
+		}
+	}
+
+	for ( int lightID = 0; lightID < MPLIGHT_MAX; ++lightID ) {
+		if ( lightHandles[ lightID ] == -1 || lightCarriers[ lightID ] == NULL ) {
+			continue;
+		}
+
+		idVec3 presentationOrigin;
+		idMat3 presentationAxis;
+		lightCarriers[ lightID ]->GetPresentationTransformForView( presentationOrigin, presentationAxis );
+
+		renderLight_t presentationLight = lights[ lightID ];
+		presentationLight.origin = presentationOrigin + idVec3( 0, 0, 20 );
+		gameRenderWorld->UpdateLightDef( lightHandles[ lightID ], &presentationLight );
 	}
 }
 

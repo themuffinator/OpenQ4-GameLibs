@@ -1051,7 +1051,7 @@ void idGameLocal::UpdateLagometer( int aheadOfServer, int dupeUsercmds ) {
 		for ( i = 0; i < LAGO_HEIGHT; i++ ) {
 			lagometer[i][j][0] = lagometer[i][j][1] = lagometer[i][j][2] = lagometer[i][j][3] = 0;
 		}
-		ahead = idMath::Rint( (float)aheadOfServer / 16.0f );
+		ahead = idMath::Rint( static_cast<float>( aheadOfServer ) / common->GetUserCmdMsecFloat() );
 		if ( ahead >= 0 ) {
 			for ( i = 2 * Max( 0, 5 - ahead ); i < 2 * 5; i++ ) {
 				lagometer[i][j][1] = 255;
@@ -1108,10 +1108,9 @@ void idGameLocal::ClientReadSnapshot( int clientNum, int snapshotSequence, const
 	// update the game time
 	framenum = gameFrame;
 	time = gameTime;
-// RAVEN BEGIN
-// bdube: use GetMSec access rather than USERCMD_TIME
-	previousTime = time - GetMSec();
-// RAVEN END
+	previousTime = common->GetUserCmdTime( framenum - 1 );
+	msec = time - previousTime;
+	mHz = common->GetUserCmdHz();
 
 	// so that StartSound/StopSound doesn't risk skipping
 	isNewFrame = true;
@@ -1480,7 +1479,9 @@ void idGameLocal::ClientReadServerDemoSnapshot( int sequence, const int gameFram
 	
 	framenum = gameFrame;
 	time = gameTime;
-	previousTime = time - GetMSec();
+	previousTime = common->GetUserCmdTime( framenum - 1 );
+	msec = time - previousTime;
+	mHz = common->GetUserCmdHz();
 	
 	isNewFrame = true;
 
@@ -2279,10 +2280,9 @@ gameReturn_t idGameLocal::ClientPrediction( int clientNum, const usercmd_t *clie
 	// update the game time
 	framenum++;
 	previousTime = time;
-// RAVEN BEGIN
-// bdube: use GetMSec access rather than USERCMD_TIME
-	time += GetMSec();
-// RAVEN END
+	time = common->GetUserCmdTime( framenum );
+	msec = time - previousTime;
+	mHz = common->GetUserCmdHz();
 
 	// update the real client time and the new frame flag
 	if ( time > realClientTime ) {

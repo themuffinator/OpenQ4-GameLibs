@@ -220,6 +220,16 @@ private:
 	int						cycle;
 	const idDeclCameraDef	*cameraDef;
 	int						lastFrame;
+	int						presentationViewTime;
+	int						presentationRealFrame;
+	int						presentationCut;
+	bool					presentationCanInterpolate;
+	idVec3					presentationPrevViewOrigin;
+	idMat3					presentationPrevViewAxis;
+	float					presentationPrevFov;
+	idVec3					presentationCurViewOrigin;
+	idMat3					presentationCurViewAxis;
+	float					presentationCurFov;
 	idEntityPtr<idEntity>	activator;
 
 	void					Start( void );

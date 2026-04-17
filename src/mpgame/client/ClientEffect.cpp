@@ -21,6 +21,14 @@ rvClientEffect
 CLASS_DECLARATION( rvClientEntity, rvClientEffect )
 END_CLASS
 
+static int ClientEffect_GetPresentationTime( void ) {
+	if ( gameLocal.isNewFrame ) {
+		return gameLocal.GetTime();
+	}
+
+	return Sys_Milliseconds();
+}
+
 /*
 ================
 rvClientEffect::rvClientEffect
@@ -109,16 +117,31 @@ rvClientEffect::UpdateBind
 ================
 */
 void rvClientEffect::UpdateBind ( void ) {
-	rvClientEntity::UpdateBind ( );
+	UpdateBindAtTime( gameLocal.time );
+}
+
+/*
+================
+rvClientEffect::UpdateBindAtTime
+================
+*/
+void rvClientEffect::UpdateBindAtTime( int currentTime ) {
+	rvClientEntity::UpdateBindAtTime( currentTime );
 
 	renderEffect.origin = worldOrigin;
 	
 	if ( endOriginJoint != INVALID_JOINT && bindMaster ) {
+		idAnimatedEntity *animatedMaster = static_cast<idAnimatedEntity *>( bindMaster.GetEntity() );
+		const bool usePresentationTransforms = !gameLocal.isNewFrame && !bindMaster->IsType( rvViewWeapon::GetClassType() );
 		idMat3 axis;
 		idVec3 endOrigin;		
 		idVec3 dir;
 
-		static_cast<idAnimatedEntity*>(bindMaster.GetEntity())->GetJointWorldTransform ( endOriginJoint, gameLocal.time, endOrigin, axis );
+		if ( usePresentationTransforms ) {
+			animatedMaster->GetPresentationJointWorldTransform( endOriginJoint, currentTime, endOrigin, axis );
+		} else {
+			animatedMaster->GetJointWorldTransform( endOriginJoint, currentTime, endOrigin, axis );
+		}
 		SetEndOrigin ( endOrigin );
 		
 		dir = (endOrigin - worldOrigin);
@@ -133,6 +156,49 @@ void rvClientEffect::UpdateBind ( void ) {
 	} else {
 		renderEffect.groupID = 0;
 	}
+}
+
+/*
+================
+rvClientEffect::UpdatePresentationEffect
+================
+*/
+void rvClientEffect::UpdatePresentationEffect( void ) {
+	const bool allowCurrentFrameViewWeaponRefresh = bindMaster && bindMaster->IsType( rvViewWeapon::GetClassType() );
+	if ( ( gameLocal.isNewFrame && !allowCurrentFrameViewWeaponRefresh ) || effectDefHandle < 0 ) {
+		return;
+	}
+
+	// If we are bound to an entity that is now hidden we can just not render if looping, otherwise stop the effect
+	if ( bindMaster && ( bindMaster->GetRenderEntity()->hModel && bindMaster->GetModelDefHandle() == -1 ) ) {
+		if ( renderEffect.loop ) {
+			return;
+		}
+		Stop();
+		return;
+	}
+
+	renderEffect.inConnectedArea = true;
+	if ( bindMaster ) {
+		renderEffect.inConnectedArea = gameLocal.InPlayerConnectedArea( bindMaster );
+	}
+
+	const int presentationTime = ClientEffect_GetPresentationTime();
+	UpdateBindAtTime( presentationTime );
+	if ( gameRenderWorld->UpdateEffectDef( effectDefHandle, &renderEffect, presentationTime ) ) {
+		FreeEffectDef();
+		PostEventMS( &EV_Remove, 0 );
+		return;
+	}
+}
+
+/*
+================
+rvClientEffect::UpdatePresentation
+================
+*/
+void rvClientEffect::UpdatePresentation( void ) {
+	UpdatePresentationEffect();
 }
 
 /*
@@ -454,6 +520,50 @@ void rvClientCrawlEffect::Think ( void ) {
 	SetAxis ( dir.ToMat3( ) );
 		
 	rvClientEffect::Think ( );
+}
+
+/*
+================
+rvClientCrawlEffect::UpdatePresentationEffect
+================
+*/
+void rvClientCrawlEffect::UpdatePresentationEffect( void ) {
+	if ( gameLocal.isNewFrame ) {
+		return;
+	}
+
+	// If there is no crawl entity or no crawl joints then just free ourself
+	if ( !crawlEnt || !crawlJoints.Num() ) {
+		PostEventMS( &EV_Remove, 0 );
+		return;
+	}
+
+	const int presentationTime = ClientEffect_GetPresentationTime();
+	idVec3 offsetStart;
+	idVec3 offsetEnd;
+	idVec3 dir;
+	idMat3 axis;
+
+	crawlEnt->GetPresentationJointWorldTransform( crawlJoints[ jointStart ], presentationTime, offsetStart, axis );
+	SetOrigin( offsetStart );
+
+	crawlEnt->GetPresentationJointWorldTransform( crawlJoints[ jointEnd ], presentationTime, offsetEnd, axis );
+	SetEndOrigin( offsetEnd );
+
+	dir = offsetEnd - offsetStart;
+	dir.Normalize();
+	SetAxis( dir.ToMat3() );
+
+	rvClientEffect::UpdatePresentationEffect();
+}
+
+/*
+================
+rvClientCrawlEffect::UpdatePresentation
+================
+*/
+void rvClientCrawlEffect::UpdatePresentation( void ) {
+	UpdatePresentationEffect();
 }
 
 /*

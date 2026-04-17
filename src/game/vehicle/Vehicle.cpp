@@ -16,6 +16,37 @@
 #define VEHICLE_HAZARD_TIMEOUT	5000
 #define VEHICLE_LOCK_TIMEOUT	5000
 
+static int Vehicle_GetPresentationTime( void ) {
+	return Sys_Milliseconds();
+}
+
+static float Vehicle_GetPresentationInterpolationFraction( void ) {
+	if ( gameLocal.GetDemoState() == DEMO_PLAYING || gameLocal.IsTimeDemo() ) {
+		return 1.0f;
+	}
+
+	const float ticMsec = common->GetUserCmdMsecFloat();
+	if ( ticMsec <= 0.0f ) {
+		return 1.0f;
+	}
+
+	return idMath::ClampFloat( 0.0f, 1.0f,
+		static_cast<float>( Vehicle_GetPresentationTime() - gameLocal.GetTime() ) / ticMsec );
+}
+
+static idMat3 Vehicle_InterpolateAxis( const idMat3 &from, const idMat3 &to, float fraction ) {
+	if ( fraction <= 0.0f ) {
+		return from;
+	}
+	if ( fraction >= 1.0f ) {
+		return to;
+	}
+
+	idQuat blended;
+	blended.Slerp( from.ToQuat(), to.ToQuat(), fraction );
+	return blended.ToMat3();
+}
+
 const idEventDef EV_LaunchProjectiles( "launchProjectiles", "d" );
 const idEventDef EV_HUDShockWarningOff( "<HUDShockWarningOff>");
 const idEventDef EV_StalledRestart( "<StalledRestart>", "dd" );
@@ -59,6 +90,13 @@ rvVehicle::rvVehicle ( void ) {
 	crashEffect			= 0;
 	crashTime			= 0;
 	crashNextSound		= 0;
+	presentationCrashEffectTime = -1;
+	presentationPrevCrashEffectOrigin.Zero();
+	presentationCurCrashEffectOrigin.Zero();
+	presentationPrevCrashEffectAxis.Identity();
+	presentationCurCrashEffectAxis.Identity();
+	presentationPrevCrashEffectAttenuation = 0.0f;
+	presentationCurCrashEffectAttenuation = 0.0f;
 
 	fl.networkSync		= true;
 }
@@ -172,6 +210,13 @@ void rvVehicle::Save ( idSaveGame *savefile ) const {
 	crashEffect.Save ( savefile );
 	savefile->WriteInt ( crashNextSound );
 	savefile->WriteInt ( crashTime );
+	savefile->WriteInt( presentationCrashEffectTime );
+	savefile->WriteVec3( presentationPrevCrashEffectOrigin );
+	savefile->WriteVec3( presentationCurCrashEffectOrigin );
+	savefile->WriteMat3( presentationPrevCrashEffectAxis );
+	savefile->WriteMat3( presentationCurCrashEffectAxis );
+	savefile->WriteFloat( presentationPrevCrashEffectAttenuation );
+	savefile->WriteFloat( presentationCurCrashEffectAttenuation );
 
 	savefile->WriteFloat ( autoRightDir );
 	savefile->WriteBool ( autoRight );
@@ -239,6 +284,13 @@ void rvVehicle::Restore ( idRestoreGame *savefile ) {
 	crashEffect.Restore ( savefile );
 	savefile->ReadInt ( crashNextSound );
 	savefile->ReadInt ( crashTime );
+	savefile->ReadInt( presentationCrashEffectTime );
+	savefile->ReadVec3( presentationPrevCrashEffectOrigin );
+	savefile->ReadVec3( presentationCurCrashEffectOrigin );
+	savefile->ReadMat3( presentationPrevCrashEffectAxis );
+	savefile->ReadMat3( presentationCurCrashEffectAxis );
+	savefile->ReadFloat( presentationPrevCrashEffectAttenuation );
+	savefile->ReadFloat( presentationCurCrashEffectAttenuation );
 	
 	savefile->ReadFloat ( autoRightDir );
 	savefile->ReadBool ( autoRight );
@@ -616,6 +668,7 @@ void rvVehicle::Think ( void ) {
 	if ( crashEffect && crashTime != gameLocal.time ) {
 		crashEffect->Stop ( );
 		crashEffect = NULL;
+		presentationCrashEffectTime = -1;
 	}		
 
 	UpdateAnimation();
@@ -1123,9 +1176,12 @@ bool rvVehicle::Collide( const trace_t &collision, const idVec3 &velocity ) {
 			crashEffect = gameLocal.PlayEffect ( gameLocal.GetEffect ( spawnArgs, "fx_crash" ), collision.c.point, collision.c.normal.ToMat3(), true );
 		}	
 		if ( crashEffect )	{
-			crashEffect->SetOrigin ( collision.c.point );
-			crashEffect->SetAxis ( collision.c.normal.ToMat3() );
-			crashEffect->Attenuate ( idMath::ClampFloat ( 0.01f, 1.0f, speed / (float)crashSpeedLarge ) );
+			const idMat3 crashAxis = collision.c.normal.ToMat3();
+			const float crashAttenuation = idMath::ClampFloat( 0.01f, 1.0f, speed / static_cast<float>( crashSpeedLarge ) );
+			crashEffect->SetOrigin( collision.c.point );
+			crashEffect->SetAxis( crashAxis );
+			crashEffect->Attenuate( crashAttenuation );
+			UpdatePresentationCrashEffectState( collision.c.point, crashAxis, crashAttenuation );
 		}
 	}
 		
@@ -1208,6 +1264,30 @@ bool rvVehicle::Collide( const trace_t &collision, const idVec3 &velocity ) {
 		Damage( this, this, dmgDir, collDmgDef.c_str(), collisionSelfDamage, 0 );
 	}
 	return false;
+}
+
+void rvVehicle::UpdatePresentationCrashEffectState( const idVec3 &origin, const idMat3 &axis, float attenuation ) {
+	if ( presentationCrashEffectTime < 0 ) {
+		presentationCrashEffectTime = gameLocal.time;
+		presentationPrevCrashEffectOrigin = origin;
+		presentationCurCrashEffectOrigin = origin;
+		presentationPrevCrashEffectAxis = axis;
+		presentationCurCrashEffectAxis = axis;
+		presentationPrevCrashEffectAttenuation = attenuation;
+		presentationCurCrashEffectAttenuation = attenuation;
+		return;
+	}
+
+	if ( presentationCrashEffectTime != gameLocal.time ) {
+		presentationPrevCrashEffectOrigin = presentationCurCrashEffectOrigin;
+		presentationPrevCrashEffectAxis = presentationCurCrashEffectAxis;
+		presentationPrevCrashEffectAttenuation = presentationCurCrashEffectAttenuation;
+		presentationCrashEffectTime = gameLocal.time;
+	}
+
+	presentationCurCrashEffectOrigin = origin;
+	presentationCurCrashEffectAxis = axis;
+	presentationCurCrashEffectAttenuation = attenuation;
 }
 
 /*
@@ -1380,6 +1460,32 @@ void rvVehicle::Show ( void ) {
 	
 	GetPhysics()->SetContents ( CONTENTS_BODY );
 	GetPhysics()->GetClipModel()->Link();
+}
+
+/*
+==================
+rvVehicle::UpdatePresentationNonModelVisuals
+==================
+*/
+void rvVehicle::UpdatePresentationNonModelVisuals( void ) {
+	idActor::UpdatePresentationNonModelVisuals();
+
+	if ( gameLocal.isNewFrame || IsHidden() ) {
+		return;
+	}
+
+	for ( int i = 0; i < positions.Num(); i++ ) {
+		positions[i].UpdatePresentationNonModelVisuals();
+	}
+
+	if ( crashEffect && presentationCrashEffectTime >= 0 ) {
+		const float fraction = Vehicle_GetPresentationInterpolationFraction();
+		idVec3 presentationOrigin;
+		presentationOrigin.Lerp( presentationPrevCrashEffectOrigin, presentationCurCrashEffectOrigin, fraction );
+		crashEffect->SetOrigin( presentationOrigin );
+		crashEffect->SetAxis( Vehicle_InterpolateAxis( presentationPrevCrashEffectAxis, presentationCurCrashEffectAxis, fraction ) );
+		crashEffect->Attenuate( idMath::Lerp( presentationPrevCrashEffectAttenuation, presentationCurCrashEffectAttenuation, fraction ) );
+	}
 }
 
 /*

@@ -19,6 +19,7 @@ public:
 	void				Restore							( idRestoreGame *savefile );
 
 	void				BuildActionArray				( void );
+	virtual void		UpdatePresentationNonModelVisuals( void );
 
 	//void				ScriptedFace					( idEntity* faceEnt, bool endWithIdle );
 
@@ -92,6 +93,8 @@ protected:
 	void				MaintainBoltSweep				( void );
 	void				InitBoltSweep					( idVec3 idealTarget );
 	void				LightningSweep					( idVec3 attackVector, rvClientEffectPtr& boltEffect, rvClientEffectPtr& impactEffect );
+	void				UpdateLightningSweepEffects		( const idVec3& attackVector, rvClientEffectPtr& boltEffect, rvClientEffectPtr& impactEffect, int sampleTime, bool presentationSample, bool allowSpawn, bool applyDamage );
+	void				UpdateBoltSweepPresentation		( void );
 	void				StopAllBoltEffects				( void );
 
 	rvClientEffectPtr		leftBoltEffect;
@@ -869,34 +872,67 @@ void rvMonsterBossMakron::MaintainBoltSweep	( void )	{
 	}
 
 }
+
+/*
+================
+rvMonsterBossMakron::UpdatePresentationNonModelVisuals
+================
+*/
+void rvMonsterBossMakron::UpdatePresentationNonModelVisuals( void ) {
+	idAI::UpdatePresentationNonModelVisuals();
+
+	if ( gameLocal.isNewFrame ) {
+		return;
+	}
+
+	UpdateBoltSweepPresentation();
+}
 /*
 ================
 rvMonsterBossMakron::LightningSweep
 ================
 */
 void rvMonsterBossMakron::LightningSweep ( idVec3 attackVector, rvClientEffectPtr& boltEffect, rvClientEffectPtr& impactEffect )	{
+	UpdateLightningSweepEffects( attackVector, boltEffect, impactEffect, gameLocal.time, false, true, true );
+}
+
+/*
+================
+rvMonsterBossMakron::UpdateLightningSweepEffects
+================
+*/
+void rvMonsterBossMakron::UpdateLightningSweepEffects( const idVec3& attackVector, rvClientEffectPtr& boltEffect, rvClientEffectPtr& impactEffect, int sampleTime, bool presentationSample, bool allowSpawn, bool applyDamage ) {
 
 	idVec3	origin;
 	idMat3	axis;
 	trace_t	tr;
 
-	GetJointWorldTransform( jointLightningBolt, gameLocal.time, origin, axis);
+	if ( presentationSample ) {
+		GetPresentationJointWorldTransform( jointLightningBolt, sampleTime, origin, axis );
+	} else {
+		GetJointWorldTransform( jointLightningBolt, sampleTime, origin, axis );
+	}
 	
 	//trace out from origin along attackVector
-	attackVector.Normalize();
-	gameLocal.TracePoint( this, tr, origin, origin + (attackVector * 25600), MASK_SHOT_RENDERMODEL, this);
+	idVec3 normalizedAttackVector = attackVector;
+	normalizedAttackVector.Normalize();
+	gameLocal.TracePoint( this, tr, origin, origin + (normalizedAttackVector * 25600), MASK_SHOT_RENDERMODEL, this);
 	//gameRenderWorld->DebugLine( colorRed, origin, tr.c.point, 100, true);
 	
 	if ( !boltEffect ) {
-		boltEffect =  gameLocal.PlayEffect ( gameLocal.GetEffect ( this->spawnArgs, "fx_sweep_fly" ), origin, attackVector.ToMat3(), true, tr.c.point);
+		if ( allowSpawn ) {
+			boltEffect =  gameLocal.PlayEffect ( gameLocal.GetEffect ( this->spawnArgs, "fx_sweep_fly" ), origin, normalizedAttackVector.ToMat3(), true, tr.c.point);
+		}
 	} else {
 		boltEffect->SetOrigin ( origin );
-		boltEffect->SetAxis ( attackVector.ToMat3() );
+		boltEffect->SetAxis ( normalizedAttackVector.ToMat3() );
 		boltEffect->SetEndOrigin ( tr.c.point );
 	}	
 
 	if ( !impactEffect ) {
-		impactEffect =  gameLocal.PlayEffect ( gameLocal.GetEffect ( this->spawnArgs, "fx_sweep_impact" ), tr.c.point, tr.c.normal.ToMat3(), true, tr.c.point);
+		if ( allowSpawn ) {
+			impactEffect =  gameLocal.PlayEffect ( gameLocal.GetEffect ( this->spawnArgs, "fx_sweep_impact" ), tr.c.point, tr.c.normal.ToMat3(), true, tr.c.point);
+		}
 	} else {
 		impactEffect->SetOrigin ( tr.c.point );
 		impactEffect->SetAxis (  tr.c.normal.ToMat3() );
@@ -904,20 +940,86 @@ void rvMonsterBossMakron::LightningSweep ( idVec3 attackVector, rvClientEffectPt
 	}	
 
 	if ( !boltMuzzleFlash )	{
-		boltMuzzleFlash =  gameLocal.PlayEffect ( gameLocal.GetEffect ( this->spawnArgs, "fx_sweep_muzzle" ), origin, attackVector.ToMat3(), true, origin);
+		if ( allowSpawn ) {
+			boltMuzzleFlash =  gameLocal.PlayEffect ( gameLocal.GetEffect ( this->spawnArgs, "fx_sweep_muzzle" ), origin, normalizedAttackVector.ToMat3(), true, origin);
+		}
 	} else {
 		boltMuzzleFlash->SetOrigin ( origin );
-		boltMuzzleFlash->SetAxis ( attackVector.ToMat3() );
+		boltMuzzleFlash->SetAxis ( normalizedAttackVector.ToMat3() );
 		boltMuzzleFlash->SetEndOrigin ( origin );
 	}	
+
+	if ( !applyDamage ) {
+		return;
+	}
 
 	//hurt anything in the way
 	idEntity* ent = gameLocal.entities[tr.c.entityNum];
 
 	if( ent)	{
-		ent->Damage ( this, this, attackVector, spawnArgs.GetString ( "def_makron_sweep_damage" ), 1.0f, 0 );
+		ent->Damage ( this, this, normalizedAttackVector, spawnArgs.GetString ( "def_makron_sweep_damage" ), 1.0f, 0 );
 	}
 	
+}
+
+/*
+================
+rvMonsterBossMakron::UpdateBoltSweepPresentation
+================
+*/
+void rvMonsterBossMakron::UpdateBoltSweepPresentation( void ) {
+	if ( jointLightningBolt == INVALID_JOINT ) {
+		return;
+	}
+
+	if ( !leftBoltEffect && !rightBoltEffect && !leftBoltImpact && !rightBoltImpact && !boltMuzzleFlash ) {
+		return;
+	}
+
+	enum {
+		STATE_START,
+		STATE_WAIT1,
+		STATE_SWEEP1,
+		STATE_WAIT2,
+		STATE_SWEEP2,
+		STATE_END,
+	};
+
+	idVec3 presentationLeft = leftBoltVector;
+	idVec3 presentationRight = rightBoltVector;
+	const int presentationTime = Sys_Milliseconds();
+
+	switch ( stateBoltSweep ) {
+		case STATE_WAIT1:
+		case STATE_WAIT2:
+			break;
+
+		case STATE_SWEEP1: {
+			const float sweepDuration = SEC2MS( boltSweepTime );
+			if ( sweepDuration > 0.0f ) {
+				const float lerp = idMath::ClampFloat( 0.0f, 1.0f, ( presentationTime - boltSweepStartTime ) / sweepDuration );
+				presentationLeft.Lerp( boltVectorMin, boltVectorMax, lerp );
+				presentationRight.Lerp( boltVectorMax, boltVectorMin, lerp );
+			}
+			break;
+		}
+
+		case STATE_SWEEP2: {
+			const float sweepDuration = SEC2MS( boltSweepTime );
+			if ( sweepDuration > 0.0f ) {
+				const float lerp = idMath::ClampFloat( 0.0f, 1.0f, ( presentationTime - boltSweepStartTime ) / sweepDuration );
+				presentationLeft.Lerp( boltVectorMax, boltVectorMin, lerp );
+				presentationRight.Lerp( boltVectorMin, boltVectorMax, lerp );
+			}
+			break;
+		}
+
+		default:
+			return;
+	}
+
+	UpdateLightningSweepEffects( presentationLeft, leftBoltEffect, leftBoltImpact, presentationTime, true, false, false );
+	UpdateLightningSweepEffects( presentationRight, rightBoltEffect, rightBoltImpact, presentationTime, true, false, false );
 }
 
 /*

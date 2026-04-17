@@ -1508,6 +1508,31 @@ void idActor::FlashlightUpdate ( bool forceOn ) {
 
 }
 
+/*
+=====================
+idActor::UpdatePresentationNonModelVisuals
+=====================
+*/
+void idActor::UpdatePresentationNonModelVisuals( void ) {
+	if ( gameLocal.isNewFrame || flashlightHandle == -1 ) {
+		return;
+	}
+
+	if ( !flashlight.lightRadius[ 0 ] || flashlightJoint == INVALID_JOINT ) {
+		return;
+	}
+
+	const int presentationTime = Sys_Milliseconds();
+	idVec3 origin;
+	idMat3 axis;
+	GetPresentationJointWorldTransform( flashlightJoint, presentationTime, origin, axis );
+
+	renderLight_t presentationFlashlight = flashlight;
+	presentationFlashlight.origin = origin + flashlightOffset * axis;
+	presentationFlashlight.axis = axis;
+	gameRenderWorld->UpdateLightDef( flashlightHandle, &presentationFlashlight );
+}
+
 // RAVEN END
 
 /*

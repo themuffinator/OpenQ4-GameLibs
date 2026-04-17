@@ -136,11 +136,12 @@ void idGameEdit::DrawPlaybackDebugInfo( void )
 	if( pb )
 	{
 		duration = SEC2MS( pb->GetDuration() );
+		const int playbackStepMsec = common->GetUserCmdMsecForTics( g_showPlayback.GetInteger() );
 		pbd.Init();
 		pbdOld.Init();
 
 		declManager->GetPlaybackData( pb, -1, 0, 0, &pbdOld );
-		for( time = gameLocal.GetMSec(); time < duration; time += gameLocal.GetMSec() * g_showPlayback.GetInteger() )
+		for( time = common->GetUserCmdDeltaMsec( 1 ); time < duration; time += playbackStepMsec )
 		{
 			declManager->GetPlaybackData( pb, -1, time, time, &pbd );
 			gameRenderWorld->DebugArrow( colorGreen, pbdOld.GetPosition(), pbd.GetPosition(), 2 );
@@ -273,7 +274,7 @@ bool rvPlaybackDriver::Start( const char *playback, idEntity *owner, int flags, 
 		mOffset = owner->GetPhysics()->GetOrigin() - pb->GetOrigin();
 	}
 
-	mTransitionTime = numFrames * gameLocal.GetMSec();
+	mTransitionTime = common->GetUserCmdMsecForTics( numFrames );
 	return( true );
 }
 
