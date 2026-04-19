@@ -121,6 +121,15 @@ void rvClientModel::UpdatePresentation( void ) {
 
 /*
 ================
+rvClientModel::NeedsPresentationUpdate
+================
+*/
+bool rvClientModel::NeedsPresentationUpdate( void ) const {
+	return entityDefHandle >= 0 && HasBindMasterPresentationDelta();
+}
+
+/*
+================
 rvClientModel::Present
 ================
 */

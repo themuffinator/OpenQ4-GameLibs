@@ -36,6 +36,15 @@ static int Player_GetPresentationTime( void ) {
 	return gameLocal.GetPresentationTimeMsec();
 }
 
+static int Player_GetPreviousFrameTime( void ) {
+	if ( gameLocal.GetMHz() == common->GetUserCmdHz() ) {
+		const int previousFrame = gameLocal.GetFrameNum() - 1;
+		return ( previousFrame > 0 ) ? common->GetUserCmdTime( previousFrame ) : 0;
+	}
+
+	return gameLocal.GetTime() - gameLocal.GetMSec();
+}
+
 static float Player_GetPresentationInterpolationFraction( void ) {
 	if ( gameLocal.GetDemoState() == DEMO_PLAYING || gameLocal.IsTimeDemo() ) {
 		return 1.0f;
@@ -71,6 +80,61 @@ static idMat3 Player_InterpolateAxis( const idMat3 &from, const idMat3 &to, floa
 	idQuat blended;
 	blended.Slerp( from.ToQuat(), to.ToQuat(), fraction );
 	return blended.ToMat3();
+}
+
+static idEntity *Player_GetRootBoundEntity( idEntity *ent ) {
+	while ( ent != NULL && ent->GetBindMaster() != NULL ) {
+		ent = ent->GetBindMaster();
+	}
+
+	return ent;
+}
+
+static idEntity *Player_GetMoverSupportRoot( const idPhysics_Player &physicsObj ) {
+	const float minSupportNormal = 0.7f;
+	const idVec3 upDir = -physicsObj.GetGravityNormal();
+
+	for ( int i = 0; i < physicsObj.GetNumContacts(); ++i ) {
+		const contactInfo_t &contact = physicsObj.GetContact( i );
+		if ( ( contact.normal * upDir ) < minSupportNormal ) {
+			continue;
+		}
+
+		idEntity *contactEnt = gameLocal.entities[ contact.entityNum ];
+		idEntity *contactRoot = Player_GetRootBoundEntity( contactEnt );
+		if ( contactRoot != NULL && contactRoot->IsType( idMover::GetClassType() ) ) {
+			return contactRoot;
+		}
+	}
+
+	idEntity *groundRoot = Player_GetRootBoundEntity( physicsObj.GetGroundEntity() );
+	if ( groundRoot != NULL && groundRoot->IsType( idMover::GetClassType() ) ) {
+		return groundRoot;
+	}
+
+	return NULL;
+}
+
+static bool Player_GetMoverSimulationTransform( idEntity *groundRoot, idVec3 &origin, idMat3 &axis ) {
+	if ( groundRoot == NULL ) {
+		return false;
+	}
+
+	idPhysics *groundPhysics = groundRoot->GetPhysics();
+	if ( groundPhysics != NULL ) {
+		origin = groundPhysics->GetOrigin();
+		axis = groundPhysics->GetAxis();
+		return true;
+	}
+
+	renderEntity_t *groundRenderEntity = groundRoot->GetRenderEntity();
+	if ( groundRenderEntity != NULL ) {
+		origin = groundRenderEntity->origin;
+		axis = groundRenderEntity->axis;
+		return true;
+	}
+
+	return false;
 }
 
 
@@ -1239,7 +1303,6 @@ idPlayer::idPlayer() {
 	firstPersonViewOrigin	= vec3_zero;
 	firstPersonViewAxis		= mat3_identity;
 	presentationViewTime	= -1;
-	presentationRealFrame	= -1;
 	presentationCanInterpolate = false;
 	presentationPrevViewOrigin = vec3_zero;
 	presentationPrevViewAxis = mat3_identity;
@@ -1247,6 +1310,14 @@ idPlayer::idPlayer() {
 	presentationCurViewOrigin = vec3_zero;
 	presentationCurViewAxis = mat3_identity;
 	presentationCurFov		= 0.0f;
+	presentationPrevGroundEntity = NULL;
+	presentationPrevGroundRoot = NULL;
+	presentationPrevGroundLocalViewOrigin = vec3_zero;
+	presentationPrevGroundLocalViewAxis = mat3_identity;
+	presentationCurGroundEntity = NULL;
+	presentationCurGroundRoot = NULL;
+	presentationCurGroundLocalViewOrigin = vec3_zero;
+	presentationCurGroundLocalViewAxis = mat3_identity;
 
 	hipJoint				= INVALID_JOINT;
 	chestJoint				= INVALID_JOINT;
@@ -2580,7 +2651,6 @@ void idPlayer::Restore( idRestoreGame *savefile ) {
 	savefile->ReadVec3( firstPersonViewOrigin );
 	savefile->ReadMat3( firstPersonViewAxis );
 	savefile->ReadInt( presentationViewTime );
-	presentationRealFrame = -1;
 	presentationCanInterpolate = false;
 	savefile->ReadVec3( presentationPrevViewOrigin );
 	savefile->ReadMat3( presentationPrevViewAxis );
@@ -2588,6 +2658,14 @@ void idPlayer::Restore( idRestoreGame *savefile ) {
 	savefile->ReadVec3( presentationCurViewOrigin );
 	savefile->ReadMat3( presentationCurViewAxis );
 	savefile->ReadFloat( presentationCurFov );
+	presentationPrevGroundEntity = NULL;
+	presentationPrevGroundRoot = NULL;
+	presentationPrevGroundLocalViewOrigin = vec3_zero;
+	presentationPrevGroundLocalViewAxis = mat3_identity;
+	presentationCurGroundEntity = NULL;
+	presentationCurGroundRoot = NULL;
+	presentationCurGroundLocalViewOrigin = vec3_zero;
+	presentationCurGroundLocalViewAxis = mat3_identity;
 
 	// don't bother restoring dragEntity since it's a dev tool
  	dragEntity.Clear();
@@ -7737,6 +7815,17 @@ void idPlayer::CrashLand( const idVec3 &oldOrigin, const idVec3 &oldVelocity ) {
 
 	origin = GetPhysics()->GetOrigin();
 	gravityVector = physicsObj.GetGravity();
+	idEntity *groundRoot = Player_GetMoverSupportRoot( physicsObj );
+
+	// Bound mover assemblies can create tiny support gaps while the player walks
+	// across internal seams. Those transitions are not meaningful falls, so skip
+	// landing camera kicks/damage for small deltas while still riding the mover.
+	if ( groundRoot != NULL && groundRoot->IsType( idMover::GetClassType() ) ) {
+		const float moverDist = idMath::Fabs( ( origin - oldOrigin ) * -gravityNormal );
+		if ( moverDist <= 2.0f * pm_stepsize.GetFloat() ) {
+			return;
+		}
+	}
 
 	// calculate the exact velocity on landing
 	dist = ( origin - oldOrigin ) * -gravityNormal;
@@ -7866,6 +7955,14 @@ void idPlayer::BobCycle( const idVec3 &pushVelocity ) {
 	gravityDir = physicsObj.GetGravityNormal();
 	vel = velocity - ( velocity * gravityDir ) * gravityDir;
 	xyspeed = vel.LengthFast();
+	idEntity *groundRoot = Player_GetMoverSupportRoot( physicsObj );
+	const float stepAmount = physicsObj.GetStepUp();
+	const bool groundOnMover =
+		physicsObj.HasGroundContacts() &&
+		groundRoot != NULL;
+	const bool suppressMoverStepSmoothing =
+		groundOnMover &&
+		idMath::Fabs( stepAmount ) <= pm_stepsize.GetFloat();
 	
 	if ( !physicsObj.HasGroundContacts() || influenceActive == INFLUENCE_LEVEL2 || ( gameLocal.isMultiplayer && spectating ) ) {
 		// airborne
@@ -7934,17 +8031,11 @@ void idPlayer::BobCycle( const idVec3 &pushVelocity ) {
 	// calculate position for view bobbing
 	viewBob.Zero();
 
-	const float stepAmount = physicsObj.GetStepUp();
-	const bool suppressMoverStepSmoothing =
-		stepAmount < -0.25f &&
-		( pushVelocity * gravityDir ) > 0.25f &&
-		physicsObj.HasGroundContacts();
-
 	if ( physicsObj.HasSteppedUp() ) {
-		// Descending movers can look like a stream of tiny step-down events while
-		// the player walks across them. Suppress stair-bob smoothing for that
-		// case so the camera stays aligned with the interpolated mover instead of
-		// vibrating against it.
+		// Moving lift assemblies can swap support between a bound clip helper and
+		// the parent mover, or look like a stream of tiny step-downs while the
+		// ground is descending. Those are not real stair steps, so skip the
+		// stair-bob smoothing that would otherwise make the high-refresh view shake.
 		if ( suppressMoverStepSmoothing ) {
 			stepUpDelta = 0.0f;
 		} else {
@@ -9265,7 +9356,6 @@ void idPlayer::Move( void ) {
 	// save old origin and velocity for crashlanding
 	oldOrigin = physicsObj.GetOrigin();
 	oldVelocity = physicsObj.GetLinearVelocity();
-	pushVelocity = physicsObj.GetPushedLinearVelocity();
 
 	// set physics variables
 	physicsObj.SetMaxStepHeight( pm_stepsize.GetFloat() );
@@ -9312,6 +9402,10 @@ void idPlayer::Move( void ) {
 	} else { 
 		RunPhysics();
 	}
+
+	// Bob/view smoothing should use the mover push applied by the current
+	// simulation frame, not the previous frame's support state.
+	pushVelocity = physicsObj.GetPushedLinearVelocity();
 
  	// update our last valid AAS location for the AI
 	if ( !gameLocal.isMultiplayer ) {
@@ -11269,6 +11363,18 @@ void idPlayer::UpdatePresentationViewState( void ) {
 	const idVec3 simViewOrigin = firstPersonViewOrigin;
 	const idMat3 simViewAxis = firstPersonViewAxis;
 	const float currentFov = CalcFov( true );
+	idEntity *currentGroundRoot = Player_GetMoverSupportRoot( physicsObj );
+	idEntity *currentGroundEntity = currentGroundRoot;
+	idVec3 currentGroundLocalViewOrigin = simViewOrigin;
+	idMat3 currentGroundLocalViewAxis = simViewAxis;
+	if ( currentGroundRoot != NULL ) {
+		idVec3 groundOrigin;
+		idMat3 groundAxis;
+		if ( Player_GetMoverSimulationTransform( currentGroundRoot, groundOrigin, groundAxis ) ) {
+			currentGroundLocalViewOrigin = ( simViewOrigin - groundOrigin ) * groundAxis.Transpose();
+			currentGroundLocalViewAxis = simViewAxis * groundAxis.Transpose();
+		}
+	}
 	const float predictionDecayTime = net_predictionErrorDecay.GetFloat();
 	const bool activePredictionViewSmoothing =
 		WantSmoothing() &&
@@ -11281,7 +11387,6 @@ void idPlayer::UpdatePresentationViewState( void ) {
 
 	if ( presentationViewTime < 0 ) {
 		presentationViewTime = gameLocal.time;
-		presentationRealFrame = gameLocal.framenum;
 		presentationCanInterpolate = false;
 		presentationPrevViewOrigin = simViewOrigin;
 		presentationPrevViewAxis = simViewAxis;
@@ -11289,15 +11394,54 @@ void idPlayer::UpdatePresentationViewState( void ) {
 		presentationCurViewOrigin = simViewOrigin;
 		presentationCurViewAxis = simViewAxis;
 		presentationCurFov = currentFov;
+		presentationPrevGroundEntity = currentGroundEntity;
+		presentationPrevGroundRoot = currentGroundRoot;
+		presentationPrevGroundLocalViewOrigin = currentGroundLocalViewOrigin;
+		presentationPrevGroundLocalViewAxis = currentGroundLocalViewAxis;
+		presentationCurGroundEntity = currentGroundEntity;
+		presentationCurGroundRoot = currentGroundRoot;
+		presentationCurGroundLocalViewOrigin = currentGroundLocalViewOrigin;
+		presentationCurGroundLocalViewAxis = currentGroundLocalViewAxis;
 		return;
 	}
 
 	if ( presentationViewTime != gameLocal.time ) {
-		const float maxOriginDelta = 12.0f;
+		idEntity *previousGroundEntity = presentationCurGroundEntity.GetEntity();
+		idEntity *previousGroundRoot = presentationCurGroundRoot.GetEntity();
+		if ( currentGroundRoot == NULL && previousGroundRoot != NULL ) {
+			idVec3 previousGroundOrigin;
+			idMat3 previousGroundAxis;
+			if ( Player_GetMoverSimulationTransform( previousGroundRoot, previousGroundOrigin, previousGroundAxis ) ) {
+				idVec3 previousRootLocalViewOrigin = ( simViewOrigin - previousGroundOrigin ) * previousGroundAxis.Transpose();
+				const idVec3 upLocal = ( -physicsObj.GetGravityNormal() ) * previousGroundAxis.Transpose();
+				const idVec3 localDelta = previousRootLocalViewOrigin - presentationCurGroundLocalViewOrigin;
+				const float verticalDelta = localDelta * upLocal;
+				const idVec3 horizontalDelta = localDelta - upLocal * verticalDelta;
+				if ( idMath::Fabs( verticalDelta ) <= 2.0f * pm_stepsize.GetFloat() &&
+					horizontalDelta.LengthSqr() <= Square( 16.0f ) ) {
+					currentGroundEntity = previousGroundEntity;
+					currentGroundRoot = previousGroundRoot;
+					currentGroundLocalViewOrigin = previousRootLocalViewOrigin;
+					currentGroundLocalViewAxis = simViewAxis * previousGroundAxis.Transpose();
+				}
+			}
+		}
+		const bool sameMoverGround = ( currentGroundRoot != NULL && currentGroundRoot == previousGroundRoot );
+		if ( sameMoverGround ) {
+			idVec3 groundOrigin;
+			idMat3 groundAxis;
+			if ( Player_GetMoverSimulationTransform( currentGroundRoot, groundOrigin, groundAxis ) ) {
+				const idVec3 upLocal = ( -physicsObj.GetGravityNormal() ) * groundAxis.Transpose();
+				const float localVerticalDelta = ( currentGroundLocalViewOrigin - presentationCurGroundLocalViewOrigin ) * upLocal;
+				if ( previousGroundEntity != currentGroundEntity ||
+					idMath::Fabs( localVerticalDelta ) <= pm_stepsize.GetFloat() ) {
+					currentGroundLocalViewOrigin -= upLocal * localVerticalDelta;
+				}
+			}
+		}
+		const float maxOriginDelta = sameMoverGround ? 48.0f : 12.0f;
 		const float maxAngleDelta = 50.0f;
-		const int deltaTime = gameLocal.time - presentationViewTime;
-		const int maxSequentialDelta = static_cast<int>( idMath::Ceil( common->GetUserCmdMsecFloat() ) );
-		const bool sequentialFrame = deltaTime > 0 && deltaTime <= maxSequentialDelta;
+		const bool sequentialFrame = ( presentationViewTime == Player_GetPreviousFrameTime() );
 		const idVec3 originDelta = simViewOrigin - presentationCurViewOrigin;
 		idAngles anglesDelta = simViewAxis.ToAngles() - presentationCurViewAxis.ToAngles();
 		anglesDelta.Normalize180();
@@ -11312,7 +11456,14 @@ void idPlayer::UpdatePresentationViewState( void ) {
 		presentationCurViewAxis = simViewAxis;
 		presentationCurFov = currentFov;
 		presentationViewTime = gameLocal.time;
-		presentationRealFrame = gameLocal.framenum;
+		presentationPrevGroundEntity = previousGroundEntity;
+		presentationPrevGroundRoot = previousGroundRoot;
+		presentationPrevGroundLocalViewOrigin = presentationCurGroundLocalViewOrigin;
+		presentationPrevGroundLocalViewAxis = presentationCurGroundLocalViewAxis;
+		presentationCurGroundEntity = currentGroundEntity;
+		presentationCurGroundRoot = currentGroundRoot;
+		presentationCurGroundLocalViewOrigin = currentGroundLocalViewOrigin;
+		presentationCurGroundLocalViewAxis = currentGroundLocalViewAxis;
 		// Listen-server clients can still be riding prediction-error decay inside
 		// a nominal game frame; treat that as a discontinuity and snap the
 		// first-person presentation state instead of blending against the older
@@ -11322,6 +11473,10 @@ void idPlayer::UpdatePresentationViewState( void ) {
 			presentationPrevViewOrigin = presentationCurViewOrigin;
 			presentationPrevViewAxis = presentationCurViewAxis;
 			presentationPrevFov = presentationCurFov;
+			presentationPrevGroundEntity = presentationCurGroundEntity;
+			presentationPrevGroundRoot = presentationCurGroundRoot;
+			presentationPrevGroundLocalViewOrigin = presentationCurGroundLocalViewOrigin;
+			presentationPrevGroundLocalViewAxis = presentationCurGroundLocalViewAxis;
 		}
 		return;
 	}
@@ -11329,11 +11484,19 @@ void idPlayer::UpdatePresentationViewState( void ) {
 	presentationCurViewOrigin = simViewOrigin;
 	presentationCurViewAxis = simViewAxis;
 	presentationCurFov = currentFov;
+	presentationCurGroundEntity = currentGroundEntity;
+	presentationCurGroundRoot = currentGroundRoot;
+	presentationCurGroundLocalViewOrigin = currentGroundLocalViewOrigin;
+	presentationCurGroundLocalViewAxis = currentGroundLocalViewAxis;
 	if ( activePredictionViewSmoothing ) {
 		presentationCanInterpolate = false;
 		presentationPrevViewOrigin = presentationCurViewOrigin;
 		presentationPrevViewAxis = presentationCurViewAxis;
 		presentationPrevFov = presentationCurFov;
+		presentationPrevGroundEntity = presentationCurGroundEntity;
+		presentationPrevGroundRoot = presentationCurGroundRoot;
+		presentationPrevGroundLocalViewOrigin = presentationCurGroundLocalViewOrigin;
+		presentationPrevGroundLocalViewAxis = presentationCurGroundLocalViewAxis;
 	}
 }
 
@@ -11351,6 +11514,30 @@ void idPlayer::GetPresentationViewPos( idVec3 &origin, idMat3 &axis ) const {
 	}
 
 	const float fraction = Player_GetPresentationViewBlendFraction();
+	idEntity *previousGroundRoot = presentationPrevGroundRoot.GetEntity();
+	idEntity *currentGroundRoot = presentationCurGroundRoot.GetEntity();
+	if ( previousGroundRoot != NULL && previousGroundRoot == currentGroundRoot ) {
+		idVec3 moverOrigin;
+		idMat3 moverAxis;
+		currentGroundRoot->GetPresentationTransformForView( moverOrigin, moverAxis );
+		idVec3 localPrevOrigin = presentationPrevGroundLocalViewOrigin;
+		idVec3 localCurOrigin = presentationCurGroundLocalViewOrigin;
+		const idVec3 upLocal = ( -physicsObj.GetGravityNormal() ) * moverAxis.Transpose();
+		const float localVerticalDelta = ( localCurOrigin - localPrevOrigin ) * upLocal;
+		if ( presentationPrevGroundEntity.GetEntity() != presentationCurGroundEntity.GetEntity() ||
+			idMath::Fabs( localVerticalDelta ) <= pm_stepsize.GetFloat() ) {
+			localCurOrigin -= upLocal * localVerticalDelta;
+		}
+
+		idVec3 localOrigin;
+		localOrigin.Lerp( localPrevOrigin, localCurOrigin, fraction );
+		origin = moverOrigin + localOrigin * moverAxis;
+
+		idMat3 localAxis = Player_InterpolateAxis( presentationPrevGroundLocalViewAxis, presentationCurGroundLocalViewAxis, fraction );
+		axis = localAxis * moverAxis;
+		return;
+	}
+
 	origin.Lerp( presentationPrevViewOrigin, presentationCurViewOrigin, fraction );
 	axis = Player_InterpolateAxis( presentationPrevViewAxis, presentationCurViewAxis, fraction );
 }

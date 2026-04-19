@@ -5377,23 +5377,6 @@ static void MultiplayerGame_UpdateScenePlayerPresentation( const idPlayer *viewP
 	}
 }
 
-static void MultiplayerGame_UpdateSceneProjectilePresentation( const idPlayer *viewPlayer ) {
-	if ( viewPlayer == NULL || gameLocal.isNewFrame ) {
-		return;
-	}
-
-	for ( idEntity *ent = gameLocal.spawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
-		if ( !ent->IsType( idProjectile::GetClassType() ) ) {
-			continue;
-		}
-		if ( ent->GetInstance() != viewPlayer->GetInstance() ) {
-			continue;
-		}
-
-		static_cast<idProjectile *>( ent )->UpdatePresentationProjectile();
-	}
-}
-
 static void MultiplayerGame_UpdateSceneActiveEntityPresentation( const idPlayer *viewPlayer ) {
 	if ( viewPlayer == NULL || gameLocal.isNewFrame ) {
 		return;
@@ -5406,7 +5389,7 @@ static void MultiplayerGame_UpdateSceneActiveEntityPresentation( const idPlayer 
 		if ( ent->GetInstance() != viewPlayer->GetInstance() ) {
 			continue;
 		}
-		if ( ent->IsType( idProjectile::GetClassType() ) || ent->IsType( rvViewWeapon::GetClassType() ) ) {
+		if ( ent->IsType( rvViewWeapon::GetClassType() ) ) {
 			continue;
 		}
 
@@ -5415,8 +5398,23 @@ static void MultiplayerGame_UpdateSceneActiveEntityPresentation( const idPlayer 
 			continue;
 		}
 
-		ent->UpdatePresentationTransformToRenderWorld();
-		ent->UpdatePresentationNonModelVisuals();
+		if ( ent->IsType( idProjectile::GetClassType() ) ) {
+			static_cast<idProjectile *>( ent )->UpdatePresentationProjectile();
+			continue;
+		}
+
+		const bool needsTransformUpdate = ent->HasPresentationTransformDelta();
+		const bool needsNonModelUpdate = ent->NeedsPresentationNonModelVisualUpdate();
+		if ( !needsTransformUpdate && !needsNonModelUpdate ) {
+			continue;
+		}
+
+		if ( needsTransformUpdate ) {
+			ent->UpdatePresentationTransformToRenderWorld();
+		}
+		if ( needsNonModelUpdate ) {
+			ent->UpdatePresentationNonModelVisuals();
+		}
 	}
 }
 
@@ -5426,6 +5424,10 @@ static void MultiplayerGame_UpdateSceneClientEntityPresentation( const idPlayer 
 	}
 
 	for ( rvClientEntity *ent = gameLocal.clientSpawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
+		if ( !ent->NeedsPresentationUpdate() ) {
+			continue;
+		}
+
 		idEntity *bindMaster = ent->GetBindMaster().GetEntity();
 		if ( bindMaster != NULL && bindMaster->GetInstance() != viewPlayer->GetInstance() ) {
 			continue;
@@ -5465,7 +5467,6 @@ bool idMultiplayerGame::Draw( int clientNum ) {
 
 	viewPlayer->CalculateRenderView();
 	MultiplayerGame_UpdateScenePlayerPresentation( viewPlayer );
-	MultiplayerGame_UpdateSceneProjectilePresentation( viewPlayer );
 	MultiplayerGame_UpdateSceneActiveEntityPresentation( viewPlayer );
 	UpdatePresentationSpecialLights( viewPlayer );
 	if ( viewPlayer->weaponViewModel.GetEntity() ) {

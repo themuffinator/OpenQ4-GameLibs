@@ -22,6 +22,7 @@ public:
 	virtual void		UpdateBind		( void );
 	virtual void		UpdatePresentation( void );
 	virtual void		UpdatePresentationEffect( void );
+	virtual bool		NeedsPresentationUpdate( void ) const;
 
 	bool				Play			( int startTime, bool loop = false, const idVec3& origin = vec3_origin );
 	void				Stop			( bool destroyParticles = false );
@@ -89,6 +90,7 @@ public:
 	virtual void		Think		( void );
 	virtual void		UpdatePresentation( void );
 	virtual void		UpdatePresentationEffect( void );
+	virtual bool		NeedsPresentationUpdate( void ) const;
 
 	void				Save		( idSaveGame *savefile ) const;
 	void				Restore		( idRestoreGame *savefile );

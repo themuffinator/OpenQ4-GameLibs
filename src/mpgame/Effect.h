@@ -36,6 +36,7 @@ public:
 	virtual void	UpdateChangeableSpawnArgs	( const idDict *source );
 	virtual void	ShowEditingDialog			( void );
 	virtual void	UpdatePresentationNonModelVisuals( void );
+	virtual bool	NeedsPresentationNonModelVisualUpdate( void ) const { return lookAtTarget; }
 
 	virtual void	WriteToSnapshot				( idBitMsgDelta &msg ) const;
 	virtual void	ReadFromSnapshot			( const idBitMsgDelta &msg );

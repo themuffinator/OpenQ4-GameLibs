@@ -1472,6 +1472,19 @@ void idEntity::GetPresentationTransformForView( idVec3 &origin, idMat3 &axis ) c
 
 /*
 ================
+idEntity::HasPresentationTransformDelta
+================
+*/
+bool idEntity::HasPresentationTransformDelta( void ) const {
+	if ( presentationTransformTime < 0 ) {
+		return false;
+	}
+
+	return !presentationPrevOrigin.Compare( presentationCurOrigin ) || !presentationPrevAxis.Compare( presentationCurAxis );
+}
+
+/*
+================
 idEntity::UpdateModelTransform
 ================
 */

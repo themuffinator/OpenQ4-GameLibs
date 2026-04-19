@@ -25,6 +25,7 @@ public:
 	virtual void			Think( void );
 	virtual void			Present( void );
 	virtual void			UpdatePresentationNonModelVisuals( void );
+	virtual bool			NeedsPresentationNonModelVisualUpdate( void ) const { return presentationTime >= 0; }
 
 protected:
 	idPhysics_AF			physicsObj;
@@ -265,6 +266,7 @@ public:
 	void					Restore( idRestoreGame *savefile );
 	virtual void			Present( void );
 	virtual void			UpdatePresentationNonModelVisuals( void );
+	virtual bool			NeedsPresentationNonModelVisualUpdate( void ) const { return skeletonModelDefHandle != -1; }
 	virtual	void			Damage( idEntity *inflictor, idEntity *attacker, const idVec3 &dir, const char *damageDefName, const float damageScale, const int location );
 	virtual void			SpawnGibs( const idVec3 &dir, const char *damageDefName );
 
@@ -453,6 +455,7 @@ public:
 
 	virtual void			Think( void );
 	virtual void			UpdatePresentationNonModelVisuals( void );
+	virtual bool			NeedsPresentationNonModelVisualUpdate( void ) const { return steamModelDefHandle >= 0 && !IsHidden(); }
 
 private:
 	int						steamBody;

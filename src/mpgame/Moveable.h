@@ -139,6 +139,7 @@ public:
 								const char *damageDefName, const float damageScale, const int location );
 	virtual void			Killed( idEntity *inflictor, idEntity *attacker, int damage, const idVec3 &dir, int location );
 	virtual void			UpdatePresentationNonModelVisuals( void );
+	virtual bool			NeedsPresentationNonModelVisualUpdate( void ) const { return lightHandle >= 0 || ipsHandle >= 0; }
 
 	virtual void			WriteToSnapshot( idBitMsgDelta &msg ) const;
 	virtual void			ReadFromSnapshot( const idBitMsgDelta &msg );

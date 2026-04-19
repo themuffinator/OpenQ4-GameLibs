@@ -104,6 +104,15 @@ void rvClientEntity::UpdatePresentation( void ) {
 
 /*
 ================
+rvClientEntity::NeedsPresentationUpdate
+================
+*/
+bool rvClientEntity::NeedsPresentationUpdate( void ) const {
+	return false;
+}
+
+/*
+================
 rvClientEntity::Bind
 ================
 */
@@ -177,6 +186,16 @@ rvClientEntity::UpdateBind
 */
 void rvClientEntity::UpdateBind ( void ) {
 	UpdateBindAtTime( gameLocal.time );
+}
+
+/*
+================
+rvClientEntity::HasBindMasterPresentationDelta
+================
+*/
+bool rvClientEntity::HasBindMasterPresentationDelta( void ) const {
+	const idEntity *master = bindMaster.GetEntity();
+	return master != NULL && master->HasPresentationTransformDelta();
 }
 
 /*

@@ -1573,6 +1573,9 @@ void idProjectile::ClientPredictionThink( void ) {
 	if ( !renderEntity.hModel && clientEntities.IsListEmpty() ) {
 		return;
 	}
+	if ( !gameLocal.isNewFrame ) {
+		return;
+	}
 	if ( !syncPhysics && state == LAUNCHED ) {
 		idMat3 axis = launchDir.ToMat3();
 		idVec3 origin( launchOrig );

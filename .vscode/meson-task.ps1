@@ -5,41 +5,62 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
-function Invoke-InVsX86([string]$Command) {
-    $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
-    $vswhere = Join-Path $programFilesX86 'Microsoft Visual Studio\Installer\vswhere.exe'
-    if (-not (Test-Path $vswhere)) {
-        throw "vswhere.exe not found at '$vswhere'."
-    }
+$workspaceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$mesonWrapper = Join-Path $workspaceRoot 'tools\build\meson_setup.ps1'
+$buildDir = Join-Path $workspaceRoot 'builddir'
 
-    $vsPath = & $vswhere -latest -products * -property installationPath
-    if ([string]::IsNullOrWhiteSpace($vsPath)) {
-        throw 'No Visual Studio installation was found by vswhere.'
-    }
+if (-not (Test-Path $mesonWrapper)) {
+    throw "OpenQ4-GameLibs Meson wrapper not found at '$mesonWrapper'."
+}
 
-    $vsDevCmd = Join-Path $vsPath 'Common7\Tools\VsDevCmd.bat'
-    if (-not (Test-Path $vsDevCmd)) {
-        throw "VsDevCmd.bat not found at '$vsDevCmd'."
-    }
-
-    $cmd = '"' + $vsDevCmd + '" -arch=x86 -host_arch=x64 >nul && set CC=cl && set CXX=cl && ' + $Command
-    cmd /c $cmd
+function Invoke-GameLibsMeson([string[]]$MesonArgs) {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $mesonWrapper @MesonArgs
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }
 }
 
+function Test-MesonBuildDirectory([string]$Path) {
+    $coreData = Join-Path $Path 'meson-private\coredata.dat'
+    $ninjaFile = Join-Path $Path 'build.ninja'
+    return (Test-Path $coreData) -and (Test-Path $ninjaFile)
+}
+
 switch ($Action) {
     'setup' {
-        if (Test-Path 'builddir/meson-private/coredata.dat') {
-            Invoke-InVsX86 'meson setup builddir --reconfigure'
-        }
-        else {
-            Invoke-InVsX86 'meson setup builddir --backend ninja --buildtype release'
+        if (Test-MesonBuildDirectory $buildDir) {
+            Invoke-GameLibsMeson @(
+                'setup',
+                $buildDir,
+                $workspaceRoot,
+                '--reconfigure',
+                '--backend',
+                'ninja',
+                '--buildtype',
+                'release',
+                '--vsenv'
+            )
+        } else {
+            Invoke-GameLibsMeson @(
+                'setup',
+                '--wipe',
+                $buildDir,
+                $workspaceRoot,
+                '--backend',
+                'ninja',
+                '--buildtype',
+                'release',
+                '--vsenv'
+            )
         }
     }
     'compile' {
-        Invoke-InVsX86 'meson compile -C builddir'
+        Invoke-GameLibsMeson @(
+            'compile',
+            '-C',
+            $buildDir
+        )
     }
 }

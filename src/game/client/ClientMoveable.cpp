@@ -341,6 +341,25 @@ void rvClientMoveable::UpdatePresentation( void ) {
 
 /*
 ================
+rvClientMoveable::NeedsPresentationUpdate
+================
+*/
+bool rvClientMoveable::NeedsPresentationUpdate( void ) const {
+	if ( entityDefHandle < 0 ) {
+		return false;
+	}
+
+	if ( presentationTransformTime < 0 ) {
+		return true;
+	}
+
+	return !presentationPrevOrigin.Compare( presentationCurOrigin ) ||
+		!presentationPrevAxis.Compare( presentationCurAxis ) ||
+		!scale.IsDone( ClientMoveable_GetPresentationTime() );
+}
+
+/*
+================
 rvClientMoveable::GetPhysics
 ================
 */

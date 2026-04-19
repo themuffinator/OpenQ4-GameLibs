@@ -18,6 +18,7 @@ public:
 	virtual void			Spawn			( void );
 	virtual void			Think			( void );
 	virtual void			UpdatePresentation( void );
+	virtual bool			NeedsPresentationUpdate( void ) const;
 	virtual idPhysics*		GetPhysics		( void ) const;	
 	virtual bool			Collide			( const trace_t &collision, const idVec3 &velocity );
 	

@@ -40,6 +40,34 @@ const int PMF_TIME_KNOCKBACK	= 64;		// movementTime is an air-accelerate only ti
 const int PMF_TIME_WATERJUMP	= 128;		// movementTime is waterjump
 const int PMF_ALL_TIMES			= (PMF_TIME_WATERJUMP|PMF_TIME_LAND|PMF_TIME_KNOCKBACK);
 
+static idEntity *Physics_Player_GetRootBoundEntity( idEntity *ent ) {
+	while ( ent != NULL && ent->GetBindMaster() != NULL ) {
+		ent = ent->GetBindMaster();
+	}
+
+	return ent;
+}
+
+static bool Physics_Player_HasMoverGroundSupport( const idPhysics_Player &physicsObj ) {
+	const idVec3 upDir = -physicsObj.GetGravityNormal();
+
+	for ( int i = 0; i < physicsObj.GetNumContacts(); ++i ) {
+		const contactInfo_t &contact = physicsObj.GetContact( i );
+		if ( ( contact.normal * upDir ) < MIN_WALK_NORMAL ) {
+			continue;
+		}
+
+		idEntity *contactEnt = gameLocal.entities[ contact.entityNum ];
+		idEntity *contactRoot = Physics_Player_GetRootBoundEntity( contactEnt );
+		if ( contactRoot != NULL && contactRoot->IsType( idMover::GetClassType() ) ) {
+			return true;
+		}
+	}
+
+	idEntity *groundRoot = Physics_Player_GetRootBoundEntity( physicsObj.GetGroundEntity() );
+	return groundRoot != NULL && groundRoot->IsType( idMover::GetClassType() );
+}
+
 float idPhysics_Player::Pm_Accelerate( void ) {
 	return gameLocal.IsMultiplayer() ? PM_ACCELERATE_MP : PM_ACCELERATE_SP;
 }
@@ -2105,9 +2133,14 @@ void idPhysics_Player::SetPushed( int deltaTime ) {
 	// velocity with which the player is pushed
 	velocity = ( current.origin - saved.origin ) / ( deltaTime * idMath::M_MS2SEC );
 
+	// Preserve downward carry from the mover supporting the player. Stripping it
+	// unconditionally makes descending lifts fail to carry the player smoothly,
+	// which shows up as support loss and vibration at high presentation rates.
+	const bool ridingMoverGround = Physics_Player_HasMoverGroundSupport( *this );
+
 	// remove any downward push velocity
 	d = velocity * gravityNormal;
-	if ( d > 0.0f ) {
+	if ( d > 0.0f && !ridingMoverGround ) {
 		velocity -= d * gravityNormal;
 	}
 

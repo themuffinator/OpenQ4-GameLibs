@@ -4067,28 +4067,6 @@ void DisplayClipProfile( void );
 
 /*
 ================
-GameLocal_UpdateSceneProjectilePresentation
-================
-*/
-static void GameLocal_UpdateSceneProjectilePresentation( const idPlayer *viewPlayer ) {
-	if ( viewPlayer == NULL || gameLocal.isNewFrame ) {
-		return;
-	}
-
-	for ( idEntity *ent = gameLocal.spawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
-		if ( !ent->IsType( idProjectile::GetClassType() ) ) {
-			continue;
-		}
-		if ( ent->GetInstance() != viewPlayer->GetInstance() ) {
-			continue;
-		}
-
-		static_cast<idProjectile *>( ent )->UpdatePresentationProjectile();
-	}
-}
-
-/*
-================
 GameLocal_UpdateSceneActiveEntityPresentation
 ================
 */
@@ -4104,7 +4082,7 @@ static void GameLocal_UpdateSceneActiveEntityPresentation( const idPlayer *viewP
 		if ( ent->GetInstance() != viewPlayer->GetInstance() ) {
 			continue;
 		}
-		if ( ent->IsType( idProjectile::GetClassType() ) || ent->IsType( rvViewWeapon::GetClassType() ) ) {
+		if ( ent->IsType( rvViewWeapon::GetClassType() ) ) {
 			continue;
 		}
 
@@ -4113,8 +4091,23 @@ static void GameLocal_UpdateSceneActiveEntityPresentation( const idPlayer *viewP
 			continue;
 		}
 
-		ent->UpdatePresentationTransformToRenderWorld();
-		ent->UpdatePresentationNonModelVisuals();
+		if ( ent->IsType( idProjectile::GetClassType() ) ) {
+			static_cast<idProjectile *>( ent )->UpdatePresentationProjectile();
+			continue;
+		}
+
+		const bool needsTransformUpdate = ent->HasPresentationTransformDelta();
+		const bool needsNonModelUpdate = ent->NeedsPresentationNonModelVisualUpdate();
+		if ( !needsTransformUpdate && !needsNonModelUpdate ) {
+			continue;
+		}
+
+		if ( needsTransformUpdate ) {
+			ent->UpdatePresentationTransformToRenderWorld();
+		}
+		if ( needsNonModelUpdate ) {
+			ent->UpdatePresentationNonModelVisuals();
+		}
 	}
 }
 
@@ -4129,6 +4122,10 @@ static void GameLocal_UpdateSceneClientEntityPresentation( const idPlayer *viewP
 	}
 
 	for ( rvClientEntity *ent = gameLocal.clientSpawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() ) {
+		if ( !ent->NeedsPresentationUpdate() ) {
+			continue;
+		}
+
 		idEntity *bindMaster = ent->GetBindMaster().GetEntity();
 		if ( bindMaster != NULL && bindMaster->GetInstance() != viewPlayer->GetInstance() ) {
 			continue;
@@ -4150,7 +4147,6 @@ void idGameLocal::PreparePlayerSceneForRender( idPlayer *player ) {
 
 	player->CalculateRenderView();
 	player->UpdatePresentationEntities();
-	GameLocal_UpdateSceneProjectilePresentation( player );
 	GameLocal_UpdateSceneActiveEntityPresentation( player );
 	if ( player->weaponViewModel.GetEntity() ) {
 		player->weaponViewModel->UpdatePresentationWeapon( player->CanShowWeaponViewmodel() );
@@ -7860,13 +7856,17 @@ int idGameLocal::GetPresentationTimeMsec() const {
 		return time;
 	}
 
-	static int lastFrameNum = -1;
+	static int lastGameTime = -1;
 	static int presentationOffsetMsec = 0;
 
 	const int realTimeMsec = Sys_Milliseconds();
-	if ( framenum != lastFrameNum ) {
+	// Prediction can advance framenum multiple times while replaying the same
+	// game tic on high-refresh frames. Only reset the presentation clock when
+	// the authoritative game time changes, otherwise mover/view interpolation
+	// gets re-anchored to the discrete sim snapshot every render.
+	if ( time != lastGameTime ) {
 		presentationOffsetMsec = realTimeMsec - time;
-		lastFrameNum = framenum;
+		lastGameTime = time;
 	}
 
 	return realTimeMsec - presentationOffsetMsec;

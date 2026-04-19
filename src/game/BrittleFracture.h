@@ -44,6 +44,7 @@ public:
 
 	virtual void				Present( void );
 	virtual void				UpdatePresentationNonModelVisuals( void );
+	virtual bool				NeedsPresentationNonModelVisualUpdate( void ) const { return modelDefHandle != -1 && presentationNeedsInterpolatedRefresh; }
 	virtual void				Think( void );
 	virtual void				ApplyImpulse( idEntity *ent, int id, const idVec3 &point, const idVec3 &impulse, bool splash = false );
 	virtual void				AddForce( idEntity *ent, int id, const idVec3 &point, const idVec3 &force );

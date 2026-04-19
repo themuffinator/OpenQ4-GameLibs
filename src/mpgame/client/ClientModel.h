@@ -20,6 +20,7 @@ public:
 	void						Spawn			( void );
 	virtual void				Think			( void );
 	virtual void				UpdatePresentation( void );
+	virtual bool				NeedsPresentationUpdate( void ) const;
 	
 	virtual renderEntity_t*		GetRenderEntity	( void );
 	const char*					GetClassname	( void ) const;

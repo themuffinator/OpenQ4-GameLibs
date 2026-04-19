@@ -7415,13 +7415,17 @@ int idGameLocal::GetPresentationTimeMsec() const {
 		return time;
 	}
 
-	static int lastFrameNum = -1;
+	static int lastGameTime = -1;
 	static int presentationOffsetMsec = 0;
 
 	const int realTimeMsec = Sys_Milliseconds();
-	if ( framenum != lastFrameNum ) {
+	// Prediction can advance framenum multiple times while replaying the same
+	// game tic on high-refresh frames. Only reset the presentation clock when
+	// the authoritative game time changes, otherwise mover/view interpolation
+	// gets re-anchored to the discrete sim snapshot every render.
+	if ( time != lastGameTime ) {
 		presentationOffsetMsec = realTimeMsec - time;
-		lastFrameNum = framenum;
+		lastGameTime = time;
 	}
 
 	return realTimeMsec - presentationOffsetMsec;

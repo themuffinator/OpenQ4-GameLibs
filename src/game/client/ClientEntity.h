@@ -21,6 +21,7 @@ public:
 	virtual void		Present				( void );
 	virtual void		Think				( void );
 	virtual void		UpdatePresentation	( void );
+	virtual bool		NeedsPresentationUpdate( void ) const;
 	virtual idPhysics*	GetPhysics			( void ) const;
 	virtual bool		Collide				( const trace_t &collision, const idVec3 &velocity );
 
@@ -62,6 +63,7 @@ protected:
 
 	virtual void		UpdateBind			( void );
 	virtual void		UpdateBindAtTime	( int currentTime );
+	bool				HasBindMasterPresentationDelta( void ) const;
 	void				UpdateSound			( void );
 
 public:

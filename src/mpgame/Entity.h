@@ -265,7 +265,9 @@ public:
 	void					UpdateModelTransform( void );
 	void					UpdatePresentationTransformToRenderWorld( void );
 	void					GetPresentationTransformForView( idVec3 &origin, idMat3 &axis ) const;
+	bool					HasPresentationTransformDelta( void ) const;
 	virtual void			UpdatePresentationNonModelVisuals( void );
+	virtual bool			NeedsPresentationNonModelVisualUpdate( void ) const { return false; }
 	virtual void			UpdateRenderEntityCallback();
 	virtual const idAnimator *	GetAnimator( void ) const { return NULL; }	// returns animator object used by this entity
 // RAVEN END

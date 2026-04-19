@@ -186,7 +186,10 @@ void rvClientEffect::UpdatePresentationEffect( void ) {
 
 	const int presentationTime = ClientEffect_GetPresentationTime();
 	UpdateBindAtTime( presentationTime );
-	if ( gameRenderWorld->UpdateEffectDef( effectDefHandle, &renderEffect, presentationTime ) ) {
+	// Keep effect transforms presentation-sampled, but do not advance the
+	// renderer's authoritative owner-time/spawn gate at render Hz. The renderer
+	// already uses the current view time for particle lifetime interpolation.
+	if ( gameRenderWorld->UpdateEffectDef( effectDefHandle, &renderEffect, gameLocal.time ) ) {
 		FreeEffectDef();
 		PostEventMS( &EV_Remove, 0 );
 		return;
@@ -200,6 +203,15 @@ rvClientEffect::UpdatePresentation
 */
 void rvClientEffect::UpdatePresentation( void ) {
 	UpdatePresentationEffect();
+}
+
+/*
+================
+rvClientEffect::NeedsPresentationUpdate
+================
+*/
+bool rvClientEffect::NeedsPresentationUpdate( void ) const {
+	return effectDefHandle >= 0 && HasBindMasterPresentationDelta();
 }
 
 /*
@@ -566,6 +578,15 @@ rvClientCrawlEffect::UpdatePresentation
 */
 void rvClientCrawlEffect::UpdatePresentation( void ) {
 	UpdatePresentationEffect();
+}
+
+/*
+================
+rvClientCrawlEffect::NeedsPresentationUpdate
+================
+*/
+bool rvClientCrawlEffect::NeedsPresentationUpdate( void ) const {
+	return effectDefHandle >= 0 && crawlEnt != NULL && crawlEnt->HasPresentationTransformDelta();
 }
 
 /*

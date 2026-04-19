@@ -403,7 +403,6 @@ public:
 	idVec3					firstPersonViewOrigin;
 	idMat3					firstPersonViewAxis;
 	int						presentationViewTime;
-	int						presentationRealFrame;
 	bool					presentationCanInterpolate;
 	idVec3					presentationPrevViewOrigin;
 	idMat3					presentationPrevViewAxis;
@@ -411,6 +410,14 @@ public:
 	idVec3					presentationCurViewOrigin;
 	idMat3					presentationCurViewAxis;
 	float					presentationCurFov;
+	idEntityPtr<idEntity>	presentationPrevGroundEntity;
+	idEntityPtr<idEntity>	presentationPrevGroundRoot;
+	idVec3					presentationPrevGroundLocalViewOrigin;
+	idMat3					presentationPrevGroundLocalViewAxis;
+	idEntityPtr<idEntity>	presentationCurGroundEntity;
+	idEntityPtr<idEntity>	presentationCurGroundRoot;
+	idVec3					presentationCurGroundLocalViewOrigin;
+	idMat3					presentationCurGroundLocalViewAxis;
 
 	idDragEntity			dragEntity;
 	idVec3					intentDir;
