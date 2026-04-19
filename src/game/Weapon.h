@@ -65,6 +65,7 @@ public:
 	// Visual presentation
 	void					PresentWeapon				( bool showViewModel );
 	void					UpdatePresentationWeapon	( bool showViewModel );
+	void					UpdatePresentationModel		( void );
 
 	// Networking
 	virtual void			WriteToSnapshot				( idBitMsgDelta &msg ) const;

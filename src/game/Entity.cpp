@@ -1584,6 +1584,14 @@ void idEntity::UpdatePresentationTransformToRenderWorld( void ) {
 		presentationRenderEntity.remoteRenderView = cameraTarget->GetRenderView();
 	}
 	GetPresentationTransform( presentationRenderEntity.origin, presentationRenderEntity.axis );
+	const idAnimator *animator = GetAnimator();
+	if ( presentationRenderEntity.callback == idEntity::ModelCallback &&
+		animator != NULL &&
+		animator->GetLastTransformTime() == gameLocal.time ) {
+		// Repeated presentation frames can reuse the current tick's joint frame.
+		// Keep the callback for entities whose skeleton hasn't been built yet.
+		presentationRenderEntity.callback = NULL;
+	}
 
 	if ( modelDefHandle == -1 ) {
 		modelDefHandle = gameRenderWorld->AddEntityDef( &presentationRenderEntity );

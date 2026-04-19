@@ -634,6 +634,7 @@ class idAnimator{
 	void						ClearForceUpdate( void );
 	bool						CreateFrame( int animtime, bool force );
 	bool						FrameHasChanged( int animtime ) const;
+	int							GetLastTransformTime( void ) const { return lastTransformTime; }
 	void						GetDelta( int fromtime, int totime, idVec3 &delta ) const;
 	bool						GetDeltaRotation( int fromtime, int totime, idMat3 &delta ) const;
 	void						GetOrigin( int currentTime, idVec3 &pos ) const;

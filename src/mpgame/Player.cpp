@@ -11567,15 +11567,17 @@ float idPlayer::GetPresentationFov( void ) {
 }
 
 void idPlayer::UpdatePresentationEntities( void ) {
-	UpdatePresentationTransformToRenderWorld();
+	if ( HasPresentationTransformDelta() ) {
+		UpdatePresentationTransformToRenderWorld();
+	}
 
 	idEntity *headEnt = GetHead();
-	if ( headEnt ) {
+	if ( headEnt && headEnt->HasPresentationTransformDelta() ) {
 		headEnt->UpdatePresentationTransformToRenderWorld();
 	}
 
 	idAnimatedEntity *weaponWorldEnt = GetWeaponWorldModel();
-	if ( weaponWorldEnt ) {
+	if ( weaponWorldEnt && weaponWorldEnt->HasPresentationTransformDelta() ) {
 		weaponWorldEnt->UpdatePresentationTransformToRenderWorld();
 	}
 

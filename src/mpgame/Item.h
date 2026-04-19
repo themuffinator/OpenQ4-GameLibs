@@ -36,7 +36,7 @@ public:
 	virtual void			Think( void );
 	virtual void			Present();
 	virtual void			UpdatePresentationNonModelVisuals( void );
-	virtual bool			NeedsPresentationNonModelVisualUpdate( void ) const { return itemShellHandle != -1 && pulse && !IsHidden(); }
+	virtual bool			NeedsPresentationNonModelVisualUpdate( void ) const { return itemShellHandle != -1 && pulse && !IsHidden() && HasPresentationTransformDelta(); }
 	virtual	void			InstanceJoin( void );
 	virtual void			InstanceLeave( void );
 	virtual bool			GetPhysicsToVisualTransform( idVec3 &origin, idMat3 &axis );

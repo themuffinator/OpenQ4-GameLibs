@@ -336,6 +336,8 @@ void rvViewWeapon::UpdateModelTransform( void ) {
 		renderEntity.axis = weapon->ForeshortenAxis( GetPhysics()->GetAxis() );
 		renderEntity.origin = GetPhysics()->GetOrigin();
 	}
+
+	UpdatePresentationTransformState();
 }
 
 /*
@@ -382,6 +384,14 @@ void rvViewWeapon::UpdatePresentationWeapon( bool showViewModel ) {
 	renderEntity.allowSurfaceInViewID = weapon->GetOwner()->entityNumber + 1;
 	renderEntity.weaponDepthHackInViewID = weapon->GetOwner()->entityNumber + 1;
 
+	idVec3 authoritativeOrigin;
+	idMat3 authoritativeAxis;
+	const bool restoreAuthoritativeTransform = ( GetPhysics() != NULL );
+	if ( restoreAuthoritativeTransform ) {
+		authoritativeOrigin = GetPhysics()->GetOrigin();
+		authoritativeAxis = GetPhysics()->GetAxis();
+	}
+
 	weapon->ApplyPresentationViewModelTransform();
 	weapon->UpdatePresentationLights( true );
 	weapon->UpdatePresentation();
@@ -399,12 +409,47 @@ void rvViewWeapon::UpdatePresentationWeapon( bool showViewModel ) {
 	}
 
 	if ( showViewModel && !( weapon->wsfl.zoom && weapon->GetZoomGui() ) ) {
-		Present();
+		UpdatePresentationModel();
 	} else {
 		FreeModelDef();
 	}
 
+	if ( restoreAuthoritativeTransform ) {
+		GetPhysics()->SetOrigin( authoritativeOrigin );
+		GetPhysics()->SetAxis( authoritativeAxis );
+	}
+
 	UpdateSound();
+}
+
+void rvViewWeapon::UpdatePresentationModel( void ) {
+	if ( !renderEntity.hModel || IsHidden() ) {
+		return;
+	}
+
+	renderEntity_t presentationRenderEntity = renderEntity;
+	idVec3 origin;
+	idMat3 axis;
+	if ( GetPhysicsToVisualTransform( origin, axis ) ) {
+		presentationRenderEntity.axis = axis * weapon->ForeshortenAxis( GetPhysics()->GetAxis() );
+		presentationRenderEntity.origin = GetPhysics()->GetOrigin() + origin * presentationRenderEntity.axis;
+	} else {
+		presentationRenderEntity.axis = weapon->ForeshortenAxis( GetPhysics()->GetAxis() );
+		presentationRenderEntity.origin = GetPhysics()->GetOrigin();
+	}
+
+	if ( !gameLocal.isNewFrame && presentationRenderEntity.callback == idEntity::ModelCallback ) {
+		idAnimator *animator = GetAnimator();
+		if ( animator != NULL && animator->GetLastTransformTime() == gameLocal.time ) {
+			presentationRenderEntity.callback = NULL;
+		}
+	}
+
+	if ( modelDefHandle == -1 ) {
+		modelDefHandle = gameRenderWorld->AddEntityDef( &presentationRenderEntity );
+	} else {
+		gameRenderWorld->UpdateEntityDef( modelDefHandle, &presentationRenderEntity );
+	}
 }
 
 /*
@@ -1164,10 +1209,19 @@ void rvWeapon::GetPresentationViewModelTransform( idVec3 &playerOrigin, idMat3 &
 	}
 
 	const float fraction = owner->GetPresentationViewBlendFraction();
-	playerOrigin.Lerp( presentationPrevPlayerViewOrigin, presentationCurPlayerViewOrigin, fraction );
-	playerAxis = Weapon_InterpolateAxis( presentationPrevPlayerViewAxis, presentationCurPlayerViewAxis, fraction );
-	origin.Lerp( presentationPrevViewModelOrigin, presentationCurViewModelOrigin, fraction );
-	axis = Weapon_InterpolateAxis( presentationPrevViewModelAxis, presentationCurViewModelAxis, fraction );
+	owner->GetPresentationViewPos( playerOrigin, playerAxis );
+
+	idVec3 prevLocalOrigin = ( presentationPrevViewModelOrigin - presentationPrevPlayerViewOrigin ) * presentationPrevPlayerViewAxis.Transpose();
+	idMat3 prevLocalAxis = presentationPrevViewModelAxis * presentationPrevPlayerViewAxis.Transpose();
+	idVec3 curLocalOrigin = ( presentationCurViewModelOrigin - presentationCurPlayerViewOrigin ) * presentationCurPlayerViewAxis.Transpose();
+	idMat3 curLocalAxis = presentationCurViewModelAxis * presentationCurPlayerViewAxis.Transpose();
+
+	idVec3 localOrigin;
+	localOrigin.Lerp( prevLocalOrigin, curLocalOrigin, fraction );
+	idMat3 localAxis = Weapon_InterpolateAxis( prevLocalAxis, curLocalAxis, fraction );
+
+	origin = playerOrigin + localOrigin * playerAxis;
+	axis = localAxis * playerAxis;
 }
 
 void rvWeapon::UpdateViewModelPresentation( const idVec3 &playerOrigin, const idMat3 &playerAxis ) {
@@ -1201,7 +1255,6 @@ void rvWeapon::ApplyPresentationViewModelTransform( void ) {
 	if ( viewModel ) {
 		viewModel->GetPhysics()->SetOrigin( presentationViewModelOrigin );
 		viewModel->GetPhysics()->SetAxis( presentationViewModelAxis );
-		viewModel->UpdateVisuals();
 	} else {
 		common->Warning( "NULL viewmodel %s\n", __FUNCTION__ );
 	}
@@ -1260,11 +1313,11 @@ void rvWeapon::Think ( void ) {
 	wsfl.zoom = owner->IsZoomed( );
 
 	// Only update the state loop on new frames
- 	if ( gameLocal.isNewFrame ) {
+	if ( gameLocal.isNewFrame ) {
 		stateThread.Execute( );
 	}
 
-	if ( viewModel ) {
+	if ( viewModel && gameLocal.isNewFrame ) {
 		viewModel->UpdateAnimation( );
 	}
 
@@ -1299,31 +1352,35 @@ void rvWeapon::Think ( void ) {
 		}
 	}
 
-	UpdateGUI();
+	if ( gameLocal.isNewFrame ) {
+		UpdateGUI();
 
-	// Update lights
-	UpdateFlashlight ( );
-	UpdateMuzzleFlash ( );
+		// Update simulation-driven light state once per game frame. Repeated
+		// presentation frames get the interpolated light refresh in
+		// UpdatePresentationLights().
+		UpdateFlashlight ( );
+		UpdateMuzzleFlash ( );
 
-	// update the gui light
-	renderLight_t& light = lights[WPLIGHT_GUI];
-	if ( light.lightRadius[0] && guiLightJointView != INVALID_JOINT ) {
-		if ( viewModel ) {
-			idVec4 color = viewModel->GetRenderEntity()->gui[0]->GetLightColor ( );
-			light.shaderParms[ SHADERPARM_RED ]	  = color[0] * color[3];
-			light.shaderParms[ SHADERPARM_GREEN ] = color[1] * color[3];
-			light.shaderParms[ SHADERPARM_BLUE ]  = color[2] * color[3];
-			GetGlobalJointTransform( true, guiLightJointView, light.origin, light.axis, guiLightOffset );		
-			UpdateLight ( WPLIGHT_GUI );
-		} else {
-			common->Warning( "NULL viewmodel %s\n", __FUNCTION__ );
+		// update the gui light
+		renderLight_t& light = lights[WPLIGHT_GUI];
+		if ( light.lightRadius[0] && guiLightJointView != INVALID_JOINT ) {
+			if ( viewModel ) {
+				idVec4 color = viewModel->GetRenderEntity()->gui[0]->GetLightColor ( );
+				light.shaderParms[ SHADERPARM_RED ]	  = color[0] * color[3];
+				light.shaderParms[ SHADERPARM_GREEN ] = color[1] * color[3];
+				light.shaderParms[ SHADERPARM_BLUE ]  = color[2] * color[3];
+				GetGlobalJointTransform( true, guiLightJointView, light.origin, light.axis, guiLightOffset );		
+				UpdateLight ( WPLIGHT_GUI );
+			} else {
+				common->Warning( "NULL viewmodel %s\n", __FUNCTION__ );
+			}
 		}
-	}
 
-	// Alert Monsters if the flashlight is one or a muzzle flash is active?
-	if ( !gameLocal.isMultiplayer ) {
-		if ( !owner->fl.notarget && (lightHandles[WPLIGHT_MUZZLEFLASH] != -1 || lightHandles[WPLIGHT_FLASHLIGHT] != -1 ) ) {
-			AlertMonsters ( );
+		// Alert Monsters if the flashlight is one or a muzzle flash is active?
+		if ( !gameLocal.isMultiplayer ) {
+			if ( !owner->fl.notarget && (lightHandles[WPLIGHT_MUZZLEFLASH] != -1 || lightHandles[WPLIGHT_FLASHLIGHT] != -1 ) ) {
+				AlertMonsters ( );
+			}
 		}
 	}
 }
@@ -1424,6 +1481,15 @@ rvWeapon::UpdatePresentationLights
 */
 void rvWeapon::UpdatePresentationLights( bool updateViewLights ) {
 	if ( gameLocal.isNewFrame || !owner ) {
+		return;
+	}
+
+	const bool hasMuzzleFlashLight =
+		lightHandles[WPLIGHT_MUZZLEFLASH] != -1 || lightHandles[WPLIGHT_MUZZLEFLASH_WORLD] != -1;
+	const bool hasFlashlight =
+		lightHandles[WPLIGHT_FLASHLIGHT] != -1 || lightHandles[WPLIGHT_FLASHLIGHT_WORLD] != -1;
+	const bool hasGuiLight = updateViewLights && lightHandles[WPLIGHT_GUI] != -1;
+	if ( !hasMuzzleFlashLight && !hasFlashlight && !hasGuiLight ) {
 		return;
 	}
 
