@@ -728,6 +728,7 @@ void idGameLocal::Shutdown( void ) {
 
 	// free the collision map
 	collisionModelManager->FreeMap( GetMapName() );
+	collisionModelManager->PurgeModels();
 
 // RAVEN BEGIN
 // jscott: free up static objects
