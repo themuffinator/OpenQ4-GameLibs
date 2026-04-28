@@ -91,8 +91,6 @@ protected:
 
 	bool					LoadBody( const idDeclAF_Body *fb, const idJointMat *joints );
 	bool					LoadConstraint( const idDeclAF_Constraint *fc );
-	bool					GetSolidCorrection( idVec3 &correction ) const;
-	void					InheritPhysicsVelocity( const idPhysics *sourcePhysics );
 
 };
 
