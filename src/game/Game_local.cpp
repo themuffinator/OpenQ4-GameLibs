@@ -56,6 +56,202 @@ idRenderWorld *				gameRenderWorld = NULL;		// all drawing is done to this world
 
 static gameExport_t			gameExport;
 
+idCVar g_airdefense1SkipProbe( "g_airdefense1SkipProbe", "0", CVAR_GAME | CVAR_BOOL, "temporary: auto-skip airdefense1 after one second using the ESC cinematic-skip path, log intro-to-spawn timings, and quit one frame after the player becomes live" );
+idCVar g_airdefense1SkipProbeProfile( "g_airdefense1SkipProbeProfile", "0", CVAR_GAME | CVAR_BOOL, "temporary: when g_airdefense1SkipProbe is enabled, collect coarse skip profiling buckets and top entity think totals" );
+
+static const int OPENQ4_AIRDEFENSE1_SKIP_PROBE_ENTITY_STAT_CAP = 64;
+static const int OPENQ4_AIRDEFENSE1_SKIP_PROBE_TOP_ENTITY_COUNT = 5;
+
+struct openq4AirDefense1SkipProbeEntityStat_t {
+	int		entityNumber;
+	idStr	name;
+	idStr	defName;
+	double	totalThinkMs;
+	int		samples;
+};
+
+struct openq4AirDefense1SkipProbeState_t {
+	bool	enabled;
+	bool	skipRequested;
+	bool	liveSeen;
+	bool	quitIssued;
+	bool	lastSkipActive;
+	int		requestGameTime;
+	int		requestWallTime;
+	int		lastProgressGameTime;
+	int		lastProgressWallTime;
+	int		nextProgressGameTime;
+	int		quitFrameNumber;
+	idStr	lastCameraName;
+	double	totalViewSetupMs;
+	double	totalAiFrameMs;
+	double	totalPvsMs;
+	double	totalNetEventQueueMs;
+	double	totalGravityMs;
+	double	totalBseStartMs;
+	double	totalSortActiveMs;
+	double	totalThinkMs;
+	double	totalEventsMs;
+	double	totalBseEndMs;
+	double	lastProfileViewSetupMs;
+	double	lastProfileAiFrameMs;
+	double	lastProfilePvsMs;
+	double	lastProfileNetEventQueueMs;
+	double	lastProfileGravityMs;
+	double	lastProfileBseStartMs;
+	double	lastProfileSortActiveMs;
+	double	lastProfileThinkMs;
+	double	lastProfileEventsMs;
+	double	lastProfileBseEndMs;
+	openq4AirDefense1SkipProbeEntityStat_t	entityStats[ OPENQ4_AIRDEFENSE1_SKIP_PROBE_ENTITY_STAT_CAP ];
+	double	overflowThinkMs;
+	int		overflowSamples;
+};
+
+static openq4AirDefense1SkipProbeState_t s_openq4AirDefense1SkipProbe;
+
+static void OpenQ4_ResetAirDefense1SkipProbeState( void ) {
+	s_openq4AirDefense1SkipProbe.enabled = false;
+	s_openq4AirDefense1SkipProbe.skipRequested = false;
+	s_openq4AirDefense1SkipProbe.liveSeen = false;
+	s_openq4AirDefense1SkipProbe.quitIssued = false;
+	s_openq4AirDefense1SkipProbe.lastSkipActive = false;
+	s_openq4AirDefense1SkipProbe.requestGameTime = 0;
+	s_openq4AirDefense1SkipProbe.requestWallTime = 0;
+	s_openq4AirDefense1SkipProbe.lastProgressGameTime = 0;
+	s_openq4AirDefense1SkipProbe.lastProgressWallTime = 0;
+	s_openq4AirDefense1SkipProbe.nextProgressGameTime = 0;
+	s_openq4AirDefense1SkipProbe.quitFrameNumber = -1;
+	s_openq4AirDefense1SkipProbe.lastCameraName.Clear();
+	s_openq4AirDefense1SkipProbe.totalViewSetupMs = 0.0;
+	s_openq4AirDefense1SkipProbe.totalAiFrameMs = 0.0;
+	s_openq4AirDefense1SkipProbe.totalPvsMs = 0.0;
+	s_openq4AirDefense1SkipProbe.totalNetEventQueueMs = 0.0;
+	s_openq4AirDefense1SkipProbe.totalGravityMs = 0.0;
+	s_openq4AirDefense1SkipProbe.totalBseStartMs = 0.0;
+	s_openq4AirDefense1SkipProbe.totalSortActiveMs = 0.0;
+	s_openq4AirDefense1SkipProbe.totalThinkMs = 0.0;
+	s_openq4AirDefense1SkipProbe.totalEventsMs = 0.0;
+	s_openq4AirDefense1SkipProbe.totalBseEndMs = 0.0;
+	s_openq4AirDefense1SkipProbe.lastProfileViewSetupMs = 0.0;
+	s_openq4AirDefense1SkipProbe.lastProfileAiFrameMs = 0.0;
+	s_openq4AirDefense1SkipProbe.lastProfilePvsMs = 0.0;
+	s_openq4AirDefense1SkipProbe.lastProfileNetEventQueueMs = 0.0;
+	s_openq4AirDefense1SkipProbe.lastProfileGravityMs = 0.0;
+	s_openq4AirDefense1SkipProbe.lastProfileBseStartMs = 0.0;
+	s_openq4AirDefense1SkipProbe.lastProfileSortActiveMs = 0.0;
+	s_openq4AirDefense1SkipProbe.lastProfileThinkMs = 0.0;
+	s_openq4AirDefense1SkipProbe.lastProfileEventsMs = 0.0;
+	s_openq4AirDefense1SkipProbe.lastProfileBseEndMs = 0.0;
+	s_openq4AirDefense1SkipProbe.overflowThinkMs = 0.0;
+	s_openq4AirDefense1SkipProbe.overflowSamples = 0;
+	for ( int i = 0; i < OPENQ4_AIRDEFENSE1_SKIP_PROBE_ENTITY_STAT_CAP; i++ ) {
+		s_openq4AirDefense1SkipProbe.entityStats[ i ].entityNumber = -1;
+		s_openq4AirDefense1SkipProbe.entityStats[ i ].name.Clear();
+		s_openq4AirDefense1SkipProbe.entityStats[ i ].defName.Clear();
+		s_openq4AirDefense1SkipProbe.entityStats[ i ].totalThinkMs = 0.0;
+		s_openq4AirDefense1SkipProbe.entityStats[ i ].samples = 0;
+	}
+}
+
+static bool OpenQ4_IsAirDefense1SkipProbeMap( const idGameLocal &game ) {
+	idStr mapName = game.GetMapName();
+	mapName.StripFileExtension();
+	return mapName.Icmp( "maps/game/airdefense1" ) == 0 || mapName.Icmp( "game/airdefense1" ) == 0;
+}
+
+static const char *OpenQ4_AirDefense1SkipProbeCameraName( const idCamera *camera ) {
+	const char *name = ( camera != NULL ) ? camera->GetName() : NULL;
+	return ( name != NULL && name[0] != '\0' ) ? name : "<none>";
+}
+
+static void OpenQ4_AirDefense1SkipProbePrint( const char *stage, const int frameNum, const int gameTime, const int wallTime, const char *detail = NULL ) {
+	if ( detail != NULL && detail[0] != '\0' ) {
+		gameLocal.Printf( "[airdefense1-probe] stage=%s frame=%d game=%.3fs wall=%dms %s\n", stage, frameNum, static_cast<float>( gameTime ) / 1000.0f, wallTime, detail );
+	} else {
+		gameLocal.Printf( "[airdefense1-probe] stage=%s frame=%d game=%.3fs wall=%dms\n", stage, frameNum, static_cast<float>( gameTime ) / 1000.0f, wallTime );
+	}
+}
+
+static void OpenQ4_AirDefense1SkipProbeAccumulateEntityThink( const idEntity *ent, const double thinkMs ) {
+	if ( ent == NULL || thinkMs <= 0.0 ) {
+		return;
+	}
+
+	for ( int i = 0; i < OPENQ4_AIRDEFENSE1_SKIP_PROBE_ENTITY_STAT_CAP; i++ ) {
+		openq4AirDefense1SkipProbeEntityStat_t &stat = s_openq4AirDefense1SkipProbe.entityStats[ i ];
+		if ( stat.entityNumber == ent->entityNumber ) {
+			stat.totalThinkMs += thinkMs;
+			stat.samples++;
+			return;
+		}
+		if ( stat.entityNumber == -1 ) {
+			const char *name = ent->GetName();
+			const char *defName = ent->spawnArgs.GetString( "classname", "<unknown>" );
+			stat.entityNumber = ent->entityNumber;
+			stat.name = ( name != NULL && name[0] != '\0' ) ? name : va( "#%d", ent->entityNumber );
+			stat.defName = ( defName != NULL && defName[0] != '\0' ) ? defName : "<unknown>";
+			stat.totalThinkMs = thinkMs;
+			stat.samples = 1;
+			return;
+		}
+	}
+
+	s_openq4AirDefense1SkipProbe.overflowThinkMs += thinkMs;
+	s_openq4AirDefense1SkipProbe.overflowSamples++;
+}
+
+static void OpenQ4_AirDefense1SkipProbePrintTopThinkers( const int frameNum, const int gameTime, const int wallTime ) {
+	bool used[ OPENQ4_AIRDEFENSE1_SKIP_PROBE_ENTITY_STAT_CAP ];
+	memset( used, 0, sizeof( used ) );
+
+	for ( int rank = 0; rank < OPENQ4_AIRDEFENSE1_SKIP_PROBE_TOP_ENTITY_COUNT; rank++ ) {
+		int bestIndex = -1;
+		double bestThinkMs = 0.0;
+
+		for ( int i = 0; i < OPENQ4_AIRDEFENSE1_SKIP_PROBE_ENTITY_STAT_CAP; i++ ) {
+			const openq4AirDefense1SkipProbeEntityStat_t &stat = s_openq4AirDefense1SkipProbe.entityStats[ i ];
+			if ( stat.entityNumber == -1 || used[ i ] || stat.totalThinkMs <= bestThinkMs ) {
+				continue;
+			}
+			bestIndex = i;
+			bestThinkMs = stat.totalThinkMs;
+		}
+
+		if ( bestIndex == -1 ) {
+			break;
+		}
+
+		used[ bestIndex ] = true;
+		const openq4AirDefense1SkipProbeEntityStat_t &best = s_openq4AirDefense1SkipProbe.entityStats[ bestIndex ];
+		OpenQ4_AirDefense1SkipProbePrint(
+			"top-think",
+			frameNum,
+			gameTime,
+			wallTime,
+			va(
+				"rank=%d entity=%d name=%s def=%s total=%.2fms samples=%d",
+				rank + 1,
+				best.entityNumber,
+				best.name.c_str(),
+				best.defName.c_str(),
+				best.totalThinkMs,
+				best.samples ) );
+	}
+
+	if ( s_openq4AirDefense1SkipProbe.overflowThinkMs > 0.0 ) {
+		OpenQ4_AirDefense1SkipProbePrint(
+			"top-think-overflow",
+			frameNum,
+			gameTime,
+			wallTime,
+			va(
+				"total=%.2fms samples=%d",
+				s_openq4AirDefense1SkipProbe.overflowThinkMs,
+				s_openq4AirDefense1SkipProbe.overflowSamples ) );
+	}
+}
+
 // global animation lib
 // RAVEN BEGIN
 // jsinger: changed to a pointer to prevent its constructor from allocating
@@ -321,6 +517,7 @@ void idGameLocal::Clear( void ) {
 	autoScreenshotPending = false;
 	autoMachinegunImpactStartTime = 0;
 	autoMachinegunImpactPending = false;
+	OpenQ4_ResetAirDefense1SkipProbeState();
 	vacuumAreaNum = 0;
 
 // RAVEN BEGIN
@@ -3677,6 +3874,194 @@ idGameLocal::RunFrame
 		time += GetMSec();
 
 		realClientTime = time;
+		player = GetLocalPlayer();
+		const bool airDefense1SkipProbeActive = !isMultiplayer && g_airdefense1SkipProbe.GetBool() && OpenQ4_IsAirDefense1SkipProbeMap( *this );
+		const bool airDefense1SkipProbeProfileActive = airDefense1SkipProbeActive && g_airdefense1SkipProbeProfile.GetBool();
+		if ( airDefense1SkipProbeActive ) {
+			const int wallTimeNow = Sys_Milliseconds();
+			const char *cameraName = OpenQ4_AirDefense1SkipProbeCameraName( camera );
+			if ( !s_openq4AirDefense1SkipProbe.enabled ) {
+				OpenQ4_ResetAirDefense1SkipProbeState();
+				s_openq4AirDefense1SkipProbe.enabled = true;
+				s_openq4AirDefense1SkipProbe.lastSkipActive = skipCinematic;
+				s_openq4AirDefense1SkipProbe.lastCameraName = cameraName;
+
+				OpenQ4_AirDefense1SkipProbePrint(
+					"armed",
+					framenum,
+					time,
+					wallTimeNow,
+					va( "camera=%s cinematic_skip_time=%.3fs", cameraName, static_cast<float>( cinematicSkipTime ) / 1000.0f ) );
+			}
+
+			if ( s_openq4AirDefense1SkipProbe.skipRequested && s_openq4AirDefense1SkipProbe.lastCameraName.Icmp( cameraName ) != 0 ) {
+				OpenQ4_AirDefense1SkipProbePrint(
+					"camera-change",
+					framenum,
+					time,
+					wallTimeNow,
+					va(
+						"from=%s to=%s sim_since_skip=%.3fs wall_since_skip=%dms",
+						s_openq4AirDefense1SkipProbe.lastCameraName.c_str(),
+						cameraName,
+						static_cast<float>( time - s_openq4AirDefense1SkipProbe.requestGameTime ) / 1000.0f,
+						wallTimeNow - s_openq4AirDefense1SkipProbe.requestWallTime ) );
+			}
+			s_openq4AirDefense1SkipProbe.lastCameraName = cameraName;
+
+			if ( s_openq4AirDefense1SkipProbe.skipRequested && s_openq4AirDefense1SkipProbe.lastSkipActive != skipCinematic ) {
+				OpenQ4_AirDefense1SkipProbePrint(
+					"skip-state",
+					framenum,
+					time,
+					wallTimeNow,
+					va(
+						"active=%d sim_since_skip=%.3fs wall_since_skip=%dms",
+						skipCinematic ? 1 : 0,
+						static_cast<float>( time - s_openq4AirDefense1SkipProbe.requestGameTime ) / 1000.0f,
+						wallTimeNow - s_openq4AirDefense1SkipProbe.requestWallTime ) );
+			}
+			s_openq4AirDefense1SkipProbe.lastSkipActive = skipCinematic;
+
+			if ( !s_openq4AirDefense1SkipProbe.skipRequested ) {
+				if ( player != NULL && inCinematic && time >= SEC2MS( 1.0f ) && time >= cinematicSkipTime ) {
+					const bool handledEsc = player->HandleESC();
+					if ( handledEsc && skipCinematic ) {
+						s_openq4AirDefense1SkipProbe.skipRequested = true;
+						s_openq4AirDefense1SkipProbe.requestGameTime = time;
+						s_openq4AirDefense1SkipProbe.requestWallTime = wallTimeNow;
+						s_openq4AirDefense1SkipProbe.lastProgressGameTime = time;
+						s_openq4AirDefense1SkipProbe.lastProgressWallTime = wallTimeNow;
+						s_openq4AirDefense1SkipProbe.nextProgressGameTime = time + SEC2MS( 10.0f );
+
+						OpenQ4_AirDefense1SkipProbePrint(
+							"intro-end-trigger",
+							framenum,
+							time,
+							wallTimeNow,
+							va( "camera=%s skip_delay_reached=%.3fs", cameraName, static_cast<float>( cinematicSkipTime ) / 1000.0f ) );
+					}
+				}
+			} else {
+				if ( airDefense1SkipProbeProfileActive && skipCinematic && time >= s_openq4AirDefense1SkipProbe.nextProgressGameTime ) {
+					const int segmentGameTime = time - s_openq4AirDefense1SkipProbe.lastProgressGameTime;
+					const int segmentWallTime = wallTimeNow - s_openq4AirDefense1SkipProbe.lastProgressWallTime;
+
+					OpenQ4_AirDefense1SkipProbePrint(
+						"progress",
+						framenum,
+						time,
+						wallTimeNow,
+						va(
+							"camera=%s segment_game=%.3fs segment_wall=%dms total_game=%.3fs total_wall=%dms",
+							cameraName,
+							static_cast<float>( segmentGameTime ) / 1000.0f,
+							segmentWallTime,
+							static_cast<float>( time - s_openq4AirDefense1SkipProbe.requestGameTime ) / 1000.0f,
+							wallTimeNow - s_openq4AirDefense1SkipProbe.requestWallTime ) );
+					OpenQ4_AirDefense1SkipProbePrint(
+						"profile",
+						framenum,
+						time,
+						wallTimeNow,
+						va(
+							"view=%.0fms ai=%.0fms pvs=%.0fms net=%.0fms grav=%.0fms bse_start=%.0fms sort=%.0fms think=%.0fms events=%.0fms bse_end=%.0fms",
+							s_openq4AirDefense1SkipProbe.totalViewSetupMs - s_openq4AirDefense1SkipProbe.lastProfileViewSetupMs,
+							s_openq4AirDefense1SkipProbe.totalAiFrameMs - s_openq4AirDefense1SkipProbe.lastProfileAiFrameMs,
+							s_openq4AirDefense1SkipProbe.totalPvsMs - s_openq4AirDefense1SkipProbe.lastProfilePvsMs,
+							s_openq4AirDefense1SkipProbe.totalNetEventQueueMs - s_openq4AirDefense1SkipProbe.lastProfileNetEventQueueMs,
+							s_openq4AirDefense1SkipProbe.totalGravityMs - s_openq4AirDefense1SkipProbe.lastProfileGravityMs,
+							s_openq4AirDefense1SkipProbe.totalBseStartMs - s_openq4AirDefense1SkipProbe.lastProfileBseStartMs,
+							s_openq4AirDefense1SkipProbe.totalSortActiveMs - s_openq4AirDefense1SkipProbe.lastProfileSortActiveMs,
+							s_openq4AirDefense1SkipProbe.totalThinkMs - s_openq4AirDefense1SkipProbe.lastProfileThinkMs,
+							s_openq4AirDefense1SkipProbe.totalEventsMs - s_openq4AirDefense1SkipProbe.lastProfileEventsMs,
+							s_openq4AirDefense1SkipProbe.totalBseEndMs - s_openq4AirDefense1SkipProbe.lastProfileBseEndMs ) );
+
+					s_openq4AirDefense1SkipProbe.lastProgressGameTime = time;
+					s_openq4AirDefense1SkipProbe.lastProgressWallTime = wallTimeNow;
+					s_openq4AirDefense1SkipProbe.nextProgressGameTime += SEC2MS( 10.0f );
+					s_openq4AirDefense1SkipProbe.lastProfileViewSetupMs = s_openq4AirDefense1SkipProbe.totalViewSetupMs;
+					s_openq4AirDefense1SkipProbe.lastProfileAiFrameMs = s_openq4AirDefense1SkipProbe.totalAiFrameMs;
+					s_openq4AirDefense1SkipProbe.lastProfilePvsMs = s_openq4AirDefense1SkipProbe.totalPvsMs;
+					s_openq4AirDefense1SkipProbe.lastProfileNetEventQueueMs = s_openq4AirDefense1SkipProbe.totalNetEventQueueMs;
+					s_openq4AirDefense1SkipProbe.lastProfileGravityMs = s_openq4AirDefense1SkipProbe.totalGravityMs;
+					s_openq4AirDefense1SkipProbe.lastProfileBseStartMs = s_openq4AirDefense1SkipProbe.totalBseStartMs;
+					s_openq4AirDefense1SkipProbe.lastProfileSortActiveMs = s_openq4AirDefense1SkipProbe.totalSortActiveMs;
+					s_openq4AirDefense1SkipProbe.lastProfileThinkMs = s_openq4AirDefense1SkipProbe.totalThinkMs;
+					s_openq4AirDefense1SkipProbe.lastProfileEventsMs = s_openq4AirDefense1SkipProbe.totalEventsMs;
+					s_openq4AirDefense1SkipProbe.lastProfileBseEndMs = s_openq4AirDefense1SkipProbe.totalBseEndMs;
+				}
+
+				if ( !s_openq4AirDefense1SkipProbe.liveSeen &&
+					player != NULL &&
+					!inCinematic &&
+					camera == NULL &&
+					player->GetPrivateCameraView() == NULL &&
+					!player->IsHidden() ) {
+					s_openq4AirDefense1SkipProbe.liveSeen = true;
+					s_openq4AirDefense1SkipProbe.quitFrameNumber = framenum + 1;
+
+					OpenQ4_AirDefense1SkipProbePrint(
+						"spawn-live",
+						framenum,
+						time,
+						wallTimeNow,
+						va(
+							"camera=%s total_game=%.3fs total_wall=%dms",
+							cameraName,
+							static_cast<float>( time - s_openq4AirDefense1SkipProbe.requestGameTime ) / 1000.0f,
+							wallTimeNow - s_openq4AirDefense1SkipProbe.requestWallTime ) );
+					if ( airDefense1SkipProbeProfileActive ) {
+						OpenQ4_AirDefense1SkipProbePrint(
+							"profile-total",
+							framenum,
+							time,
+							wallTimeNow,
+							va(
+								"view=%.0fms ai=%.0fms pvs=%.0fms net=%.0fms grav=%.0fms bse_start=%.0fms sort=%.0fms think=%.0fms events=%.0fms bse_end=%.0fms",
+								s_openq4AirDefense1SkipProbe.totalViewSetupMs,
+								s_openq4AirDefense1SkipProbe.totalAiFrameMs,
+								s_openq4AirDefense1SkipProbe.totalPvsMs,
+								s_openq4AirDefense1SkipProbe.totalNetEventQueueMs,
+								s_openq4AirDefense1SkipProbe.totalGravityMs,
+								s_openq4AirDefense1SkipProbe.totalBseStartMs,
+								s_openq4AirDefense1SkipProbe.totalSortActiveMs,
+								s_openq4AirDefense1SkipProbe.totalThinkMs,
+								s_openq4AirDefense1SkipProbe.totalEventsMs,
+								s_openq4AirDefense1SkipProbe.totalBseEndMs ) );
+						OpenQ4_AirDefense1SkipProbePrintTopThinkers( framenum, time, wallTimeNow );
+					}
+				}
+
+				if ( s_openq4AirDefense1SkipProbe.liveSeen &&
+					!s_openq4AirDefense1SkipProbe.quitIssued &&
+					framenum >= s_openq4AirDefense1SkipProbe.quitFrameNumber ) {
+					s_openq4AirDefense1SkipProbe.quitIssued = true;
+
+					OpenQ4_AirDefense1SkipProbePrint(
+						"quit",
+						framenum,
+						time,
+						wallTimeNow,
+						va(
+							"quit_frame=%d total_wall=%dms",
+							framenum,
+							wallTimeNow - s_openq4AirDefense1SkipProbe.requestWallTime ) );
+					cmdSystem->BufferCommandText( CMD_EXEC_APPEND, "quit\n" );
+				}
+			}
+		} else if ( s_openq4AirDefense1SkipProbe.enabled ) {
+			OpenQ4_ResetAirDefense1SkipProbeState();
+		}
+		int probeSectionStartMs = 0;
+		double probeViewSetupMs = 0.0;
+		double probeAiFrameMs = 0.0;
+		double probePvsMs = 0.0;
+		double probeNetEventQueueMs = 0.0;
+		double probeGravityMs = 0.0;
+		double probeBseStartMs = 0.0;
+		double probeSortActiveMs = 0.0;
+		double probeBseEndMs = 0.0;
 		{
 TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 		// bdube: added advanced debug support
@@ -3695,11 +4080,17 @@ TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 		// are influenced by the player's actions
 		random.RandomInt();
 
-		if ( player ) {
+		if ( player && !( inCinematic && skipCinematic ) ) {
+			if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+				probeSectionStartMs = Sys_Milliseconds();
+			}
 			// update the renderview so that any gui videos play from the right frame
 			view = player->GetRenderView();
 			if ( view ) {
 				gameRenderWorld->SetRenderView( view );
+			}
+			if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+				probeViewSetupMs += Sys_Milliseconds() - probeSectionStartMs;
 			}
 		}
 
@@ -3712,7 +4103,13 @@ TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 		// nmckenzie: Let AI System stuff update itself.
 		if ( !isMultiplayer ) {
 #ifndef _MPBETA
+			if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+				probeSectionStartMs = Sys_Milliseconds();
+			}
 			aiManager.RunFrame();
+			if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+				probeAiFrameMs += Sys_Milliseconds() - probeSectionStartMs;
+			}
 #endif // !_MPBETA
 		}
 
@@ -3723,21 +4120,51 @@ TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 
 		// create a merged pvs for all players
 		// do this before we process events, which may rely on PVS info
+		if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+			probeSectionStartMs = Sys_Milliseconds();
+		}
 		SetupPlayerPVS();
+		if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+			probePvsMs += Sys_Milliseconds() - probeSectionStartMs;
+		}
 
 		// process events on the server
+		if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+			probeSectionStartMs = Sys_Milliseconds();
+		}
 		ServerProcessEntityNetworkEventQueue();
+		if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+			probeNetEventQueueMs += Sys_Milliseconds() - probeSectionStartMs;
+		}
 
 		// update our gravity vector if needed.
+		if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+			probeSectionStartMs = Sys_Milliseconds();
+		}
 		UpdateGravity();
+		if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+			probeGravityMs += Sys_Milliseconds() - probeSectionStartMs;
+		}
 
 		if ( isLastPredictFrame ) {
 			// jscott: effect system uses gravity and the player PVS
+			if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+				probeSectionStartMs = Sys_Milliseconds();
+			}
 			bse->StartFrame();
+			if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+				probeBseStartMs += Sys_Milliseconds() - probeSectionStartMs;
+			}
 		}
 
 		// sort the active entity list
+		if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+			probeSectionStartMs = Sys_Milliseconds();
+		}
 		SortActiveEntityList();
+		if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+			probeSortActiveMs += Sys_Milliseconds() - probeSectionStartMs;
+		}
 
 		timer_think.Clear();
 		timer_think.Start();
@@ -3807,10 +4234,18 @@ TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 						ent->GetPhysics()->UpdateTime( time );
 						continue;
 					}
+					if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+						timer_singlethink.Clear();
+						timer_singlethink.Start();
+					}
 					// ddynerman: save the current thinking entity for instance-dependent
 					currentThinkingEntity = ent;
 					ent->Think();
 					currentThinkingEntity = NULL;
+					if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+						timer_singlethink.Stop();
+						OpenQ4_AirDefense1SkipProbeAccumulateEntityThink( ent, timer_singlethink.Milliseconds() );
+					}
 					num++;
 				}
 			} else {
@@ -3862,8 +4297,27 @@ TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 
 		if ( isLastPredictFrame ) {
 			// jscott: effect system uses gravity and the player PVS
+			if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+				probeSectionStartMs = Sys_Milliseconds();
+			}
 			bse->EndFrame();
 			CheckAutoMachinegunImpact();
+			if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+				probeBseEndMs += Sys_Milliseconds() - probeSectionStartMs;
+			}
+		}
+
+		if ( airDefense1SkipProbeProfileActive && s_openq4AirDefense1SkipProbe.skipRequested ) {
+			s_openq4AirDefense1SkipProbe.totalViewSetupMs += probeViewSetupMs;
+			s_openq4AirDefense1SkipProbe.totalAiFrameMs += probeAiFrameMs;
+			s_openq4AirDefense1SkipProbe.totalPvsMs += probePvsMs;
+			s_openq4AirDefense1SkipProbe.totalNetEventQueueMs += probeNetEventQueueMs;
+			s_openq4AirDefense1SkipProbe.totalGravityMs += probeGravityMs;
+			s_openq4AirDefense1SkipProbe.totalBseStartMs += probeBseStartMs;
+			s_openq4AirDefense1SkipProbe.totalSortActiveMs += probeSortActiveMs;
+			s_openq4AirDefense1SkipProbe.totalThinkMs += timer_think.Milliseconds();
+			s_openq4AirDefense1SkipProbe.totalEventsMs += timer_events.Milliseconds();
+			s_openq4AirDefense1SkipProbe.totalBseEndMs += probeBseEndMs;
 		}
 
 		// do multiplayer related stuff

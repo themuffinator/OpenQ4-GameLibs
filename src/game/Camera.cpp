@@ -1632,7 +1632,6 @@ CLASS_DECLARATION( idCamera, idCameraAnim )
 	// RAVEN END
 END_CLASS
 
-
 /*
 =====================
 idCameraAnim::idCameraAnim

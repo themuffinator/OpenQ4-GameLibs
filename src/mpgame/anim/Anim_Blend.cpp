@@ -4415,21 +4415,25 @@ bool idAnimator::GetBounds( int currentTime, idBounds &bounds ) {
 	// The legacy animation envelopes only track the skeleton plus a small head
 	// hack, which is too conservative for several retail player/body/weapon
 	// combinations and can produce stable square scissor clipping. Prefer the
-	// exact posed MD5 mesh bounds whenever the render model can provide them.
-	CreateFrame( currentTime, false );
-	if ( modelDef->ModelHandle()->BoundsFromJoints( joints, bounds ) ) {
-		if ( g_debugBounds.GetBool() ) {
-			if ( bounds[1][0] - bounds[0][0] > 2048 || bounds[1][1] - bounds[0][1] > 2048 ) {
-				if ( entity ) {
-					gameLocal.Warning( "big frameBounds on entity '%s' with model '%s': %f,%f", entity->name.c_str(), modelDef->ModelHandle()->Name(), bounds[1][0] - bounds[0][0], bounds[1][1] - bounds[0][1] );
-				} else {
-					gameLocal.Warning( "big frameBounds on model '%s': %f,%f", modelDef->ModelHandle()->Name(), bounds[1][0] - bounds[0][0], bounds[1][1] - bounds[0][1] );
+	// exact posed MD5 mesh bounds whenever the render model can provide them,
+	// but keep cinematic skip fast-forward on the cheaper retail-style bounds
+	// path because those intermediate poses are never rendered.
+	if ( !( gameLocal.inCinematic && gameLocal.skipCinematic ) ) {
+		CreateFrame( currentTime, false );
+		if ( modelDef->ModelHandle()->BoundsFromJoints( joints, bounds ) ) {
+			if ( g_debugBounds.GetBool() ) {
+				if ( bounds[1][0] - bounds[0][0] > 2048 || bounds[1][1] - bounds[0][1] > 2048 ) {
+					if ( entity ) {
+						gameLocal.Warning( "big frameBounds on entity '%s' with model '%s': %f,%f", entity->name.c_str(), modelDef->ModelHandle()->Name(), bounds[1][0] - bounds[0][0], bounds[1][1] - bounds[0][1] );
+					} else {
+						gameLocal.Warning( "big frameBounds on model '%s': %f,%f", modelDef->ModelHandle()->Name(), bounds[1][0] - bounds[0][0], bounds[1][1] - bounds[0][1] );
+					}
 				}
 			}
-		}
 
-		frameBounds = bounds;
-		return true;
+			frameBounds = bounds;
+			return true;
+		}
 	}
 
 	if ( AFPoseJoints.Num() ) {

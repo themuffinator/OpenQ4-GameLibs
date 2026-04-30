@@ -9564,8 +9564,15 @@ void idPlayer::Think( void ) {
 	aasSensor->Update();
 
 	if ( gameLocal.inCinematic && gameLocal.skipCinematic ) {
-		// we need to let the camera think inside of this routine
-		CalculateRenderView();
+		// Keep the cinematic camera timeline advancing during skip without building
+		// a full player render view every fast-forwarded frame.
+		renderView_t skipView;
+		memset( &skipView, 0, sizeof( skipView ) );
+		if ( privateCameraView ) {
+			privateCameraView->GetViewParms( &skipView );
+		} else if ( gameLocal.GetCamera() ) {
+			gameLocal.GetCamera()->GetViewParms( &skipView );
+		}
 		return;
 	}
 

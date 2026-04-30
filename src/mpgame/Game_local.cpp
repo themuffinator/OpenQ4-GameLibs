@@ -3659,7 +3659,7 @@ TIME_THIS_SCOPE("idGameLocal::RunFrame - gameDebug.BeginFrame()");
 		// are influenced by the player's actions
 		random.RandomInt();
 
-		if ( player ) {
+		if ( player && !( inCinematic && skipCinematic ) ) {
 			// update the renderview so that any gui videos play from the right frame
 			view = player->GetRenderView();
 			if ( view ) {
